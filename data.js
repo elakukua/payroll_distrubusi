@@ -829,6 +829,8 @@ var DB = (function () {
       lockedAt: locked ? '2026-09-22 07:58' : null,
       generated: !!locked,
       generatedAt: locked ? '2026-09-22 08:03' : null,
+      sampleChecked: !!locked,
+      handedOff: !!locked,
       rows: rows
     };
   }
@@ -887,6 +889,109 @@ var DB = (function () {
       t.bruto += x.bruto; t.potongan += x.potongan; t.thp += x.thp;
     });
     return t;
+  }
+
+  /* ------------------------------------------- pengelolaan periode --- */
+  var MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  var MON3 = ['JAN', 'FEB', 'MAR', 'APR', 'MEI', 'JUN', 'JUL', 'AGU', 'SEP', 'OKT', 'NOV', 'DES'];
+
+  /* Siklus payroll berjalan tanggal 21 sampai 20, jadi periode "November"
+     mencakup 21 Oktober sampai 20 November. */
+  function periodMeta(year, monthIdx) {
+    var prev = monthIdx === 0 ? 11 : monthIdx - 1;
+    var prevYear = monthIdx === 0 ? year - 1 : year;
+    return {
+      code: MON3[monthIdx] + '-' + year,
+      label: MONTHS[monthIdx] + ' ' + year,
+      range: '21 ' + MONTHS[prev].slice(0, 3) + ' ' + (prevYear !== year ? prevYear + ' ' : '') +
+        '– 20 ' + MONTHS[monthIdx].slice(0, 3) + ' ' + year,
+      year: year, monthIdx: monthIdx
+    };
+  }
+
+  /* Periode berikutnya sesudah yang terakhir ada di daftar */
+  function nextPeriod() {
+    var last = periods[periods.length - 1];
+    var i = MON3.indexOf(last.code.split('-')[0]);
+    var y = Number(last.code.split('-')[1]);
+    return i === 11 ? periodMeta(y + 1, 0) : periodMeta(y, i + 1);
+  }
+
+  /* Variabel yang berubah tiap bulan dikosongkan; komponen tetap dibawa.
+     Inilah perilaku yang diharapkan HR saat membuka bulan baru. */
+  var VARIABLE_KEYS = ['lembur', 'rapelAbsen', 'rapelLembur', 'rapelTunj', 'kompensasi', 'absen'];
+
+  function createPeriod(meta, sourceCode, mode) {
+    var src = sourceCode ? entrySheets[sourceCode] : null;
+    var srcByCode = {};
+    if (src) src.rows.forEach(function (r) { srcByCode[r.code] = r; });
+
+    var rows = employees.filter(function (e) { return e.status === 'active'; }).map(function (e) {
+      var v = blankValues();
+      var prev = srcByCode[e.code];
+
+      if (mode === 'full' && prev) {
+        entryColumns.forEach(function (c) { v[c.key] = prev.values[c.key]; });
+      } else if (mode === 'fixed' && prev) {
+        entryColumns.forEach(function (c) {
+          v[c.key] = VARIABLE_KEYS.indexOf(c.key) > -1 ? 0 : prev.values[c.key];
+        });
+      } else if (mode === 'fixed' && !prev) {
+        /* Karyawan baru yang belum pernah ada di periode sebelumnya */
+        v.pokok = e.pay.pokok;
+        v.tunjKehadiran = e.pay.tunjKehadiran;
+        v.tunjSkill = e.pay.tunjSkill;
+      }
+
+      return {
+        code: e.code, name: e.name, position: e.position,
+        values: v,
+        isNew: !prev,
+        note: !prev ? 'Karyawan baru — belum ada di periode sebelumnya' : ''
+      };
+    });
+
+    periods.push({ code: meta.code, label: meta.label, range: meta.range });
+    entrySheets[meta.code] = {
+      period: meta.code,
+      locked: false, lockedBy: null, lockedAt: null,
+      generated: false, generatedAt: null,
+      sampleChecked: false, handedOff: false,
+      createdFrom: sourceCode || null,
+      createdMode: mode,
+      rows: rows
+    };
+    periodTotals[meta.code] = {
+      bruto: 0, netto: 0, pph: 0, bpjsEmployee: 0, bpjsEmployer: 0,
+      lembur: 0, delivered: 0, count: rows.length
+    };
+    return entrySheets[meta.code];
+  }
+
+  /* Total periode disegarkan dari lembar entri supaya angka di ruang
+     kendali selalu mengikuti apa yang sedang diisi HR. */
+  function refreshPeriodTotals(code) {
+    var sh = entrySheets[code];
+    if (!sh) return;
+    var t = { bruto: 0, netto: 0, pph: 0, bpjsEmployee: 0, bpjsEmployer: 0, lembur: 0 };
+    sh.rows.forEach(function (r) {
+      var x = entryTotals(r);
+      t.bruto += x.bruto;
+      t.netto += x.thp;
+      t.pph += Number(r.values.pph) || 0;
+      t.bpjsEmployee += (Number(r.values.jht) || 0) + (Number(r.values.bpjsKes) || 0);
+      t.lembur += Number(r.values.lembur) || 0;
+    });
+    var prev = periodTotals[code] || {};
+    periodTotals[code] = {
+      bruto: t.bruto, netto: t.netto, pph: t.pph,
+      bpjsEmployee: t.bpjsEmployee,
+      bpjsEmployer: prev.bpjsEmployer || Math.round(t.bpjsEmployee * 2.8),
+      lembur: t.lembur,
+      delivered: prev.delivered || 0,
+      count: sh.rows.length
+    };
   }
 
   /* -------------------------------------------------------- demografi -- */
@@ -987,6 +1092,12 @@ var DB = (function () {
     addEmployee: addEmployee,
 
     entryColumns: entryColumns,
+    blankValues: blankValues,
+    variableKeys: VARIABLE_KEYS,
+    periodMeta: periodMeta,
+    nextPeriod: nextPeriod,
+    createPeriod: createPeriod,
+    refreshPeriodTotals: refreshPeriodTotals,
     entrySheets: entrySheets,
     entryTotals: entryTotals,
     sheetIssues: sheetIssues,
