@@ -994,6 +994,319 @@ var DB = (function () {
     };
   }
 
+  /* =====================================================================
+     LEMBUR
+     ---------------------------------------------------------------------
+     Bentuknya berbeda dari payroll: satu baris mewakili satu hari kerja
+     lembur, bukan satu karyawan. Satu karyawan bisa punya puluhan baris
+     dalam satu periode. Pembagian lembar juga mengikuti berkas HR — lima
+     sheet per kelompok divisi, bukan satu tabel besar.
+     ===================================================================== */
+
+  var OT_SHEETS = [
+    { key: 'WHL', label: 'WHL', note: 'Workshop, alat berat, dan gudang', divisions: ['WHL', 'WHSE'] },
+    { key: 'GAGM', label: 'GA & GM', note: 'General affairs, camp, kantor', divisions: ['GAGM', 'FIN', 'HRIT'] },
+    { key: 'PLTD', label: 'PLTD', note: 'Pembangkit dan kelistrikan', divisions: ['PLTD'] },
+    { key: 'PORT', label: 'PORT & JETTY', note: 'Pelabuhan dan dermaga', divisions: ['PORT'] },
+    { key: 'KONSTRUKSI', label: 'KONSTRUKSI', note: 'Pekerjaan sipil dan konstruksi', divisions: ['KONSTRUKSI'] }
+  ];
+
+  var divToSheet = {};
+  OT_SHEETS.forEach(function (s) {
+    s.divisions.forEach(function (d) { divToSheet[d] = s.key; });
+  });
+
+  /* Kolom mengikuti berkas lembur HR persis, termasuk urutannya */
+  var otColumns = [
+    { key: 'date', label: 'Effective date', type: 'date', w: 132 },
+    { key: 'day', label: 'Day', type: 'auto', w: 96 },
+    { key: 'code', label: 'Code', type: 'code', w: 74 },
+    { key: 'm1', label: 'Start (Morning)', type: 'time', w: 104 },
+    { key: 'm2', label: 'Finish', type: 'time', w: 92 },
+    { key: 'a1', label: 'Start (Afternoon)', type: 'time', w: 110 },
+    { key: 'a2', label: 'Finish', type: 'time', w: 92 },
+    { key: 'hours', label: 'Total Overtime', type: 'auto', w: 104 },
+    { key: 'notes', label: 'Notes', type: 'text', w: 300 }
+  ];
+
+  /* Arti kode dan pengalinya berbeda antar perusahaan, jadi ditaruh di
+     konfigurasi. Label di bawah adalah dugaan dari pola berkas HR dan
+     wajib dikonfirmasi sebelum dipakai. */
+  var otCodes = [
+    { code: 1, label: 'Lembur hari kerja', mult: 1.5, color: 'c1' },
+    { code: 2, label: 'Lembur hari libur mingguan', mult: 2.0, color: 'c2' },
+    { code: 3, label: 'Lembur hari libur atau di luar jadwal', mult: 2.0, color: 'c3' }
+  ];
+  var otCodeBy = {};
+  otCodes.forEach(function (c) { otCodeBy[c.code] = c; });
+
+  var DAY_ID = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  function dayName(iso) {
+    if (!iso) return '';
+    var p = iso.split('-');
+    return DAY_ID[new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2])).getDay()];
+  }
+
+  function toMin(t) {
+    if (t === null || t === undefined || t === '') return null;
+    var p = String(t).replace('.', ':').split(':');
+    var h = Number(p[0]), m = Number(p[1] || 0);
+    if (isNaN(h)) return null;
+    return h * 60 + (isNaN(m) ? 0 : m);
+  }
+  function toTime(min) {
+    if (min === null || min === undefined) return '';
+    return pad(Math.floor(min / 60) % 24, 2) + ':' + pad(min % 60, 2);
+  }
+
+  /* Rentang yang melewati tengah malam dihitung benar: 20:00 sampai 00:00
+     adalah 4 jam, bukan minus 20. */
+  function span(a, b) {
+    if (a === null || b === null) return 0;
+    var d = b - a;
+    if (d <= 0) d += 24 * 60;
+    return d;
+  }
+  function otHours(e) {
+    return (span(e.m1, e.m2) + span(e.a1, e.a2)) / 60;
+  }
+
+  /* Rentang tanggal periode: 21 bulan sebelumnya sampai 20 bulan periode */
+  function periodDates(code) {
+    var mi = MON3.indexOf(code.split('-')[0]);
+    var y = Number(code.split('-')[1]);
+    var start = new Date(mi === 0 ? y - 1 : y, mi === 0 ? 11 : mi - 1, 21);
+    var end = new Date(y, mi, 20);
+    var out = [];
+    for (var d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      out.push(d.getFullYear() + '-' + pad(d.getMonth() + 1, 2) + '-' + pad(d.getDate(), 2));
+    }
+    return out;
+  }
+
+  var OT_NOTES = [
+    'Pembersihan gudang dan pembongkaran ekspedisi', 'Pembongkaran ekspedisi',
+    'Pembersihan gudang dan lanjut patroli gudang', 'Pengambilan air dan pelayanan pengambilan barang',
+    'Stok opname dan layani pengambilan barang', 'Patroli gudang sift malam',
+    'Service 500 jam unit DT 07', 'Ganti ban posisi 9 dan 10 DT 03',
+    'Perbaikan hose parking brake CM 04', 'Adjust brake dan pedal gas TR 09',
+    'Pengelasan kerangka kontainer', 'Perbaikan kelistrikan genset 2',
+    'Mooring kapal tongkang', 'Pemantauan area workshop',
+    'Pengisian BBM area jetty dan quarry', 'Pemasangan rak gudang baru',
+    'Penurunan barang ekspedisi', 'Service general 2000 jam TR 04'
+  ];
+
+  /* Pola jam yang berulang di berkas asli: lembur sore singkat, shift
+     penuh, dan shift malam yang melewati tengah malam. */
+  var OT_PATTERNS = [
+    { m1: '13:00', m2: '14:00', a1: '17:00', a2: '18:00' },
+    { m1: '17:00', m2: '20:00', a1: null, a2: null },
+    { m1: '08:00', m2: '12:00', a1: '13:00', a2: '17:00' },
+    { m1: '08:00', m2: '12:00', a1: '14:00', a2: '20:00' },
+    { m1: '15:00', m2: '17:00', a1: null, a2: null },
+    { m1: '20:00', m2: '00:00', a1: '01:00', a2: '08:00' },
+    { m1: '01:00', m2: '02:00', a1: '05:00', a2: '08:00' },
+    { m1: '13:00', m2: '14:00', a1: null, a2: null }
+  ];
+
+  var otSheets = {};
+  var otSeq = 1;
+
+  function buildOtSheet(periodCode, locked) {
+    var dates = periodDates(periodCode);
+    var entries = [];
+
+    employees.forEach(function (e, idx) {
+      var target = otByCode[e.code];
+      if (!target) return;
+      var sheetKey = divToSheet[e.division] || 'WHL';
+      var left = target;
+      var d = idx % 3;
+
+      while (left > 0.5 && d < dates.length) {
+        var iso = dates[d];
+        var dow = new Date(iso.split('-')[0], iso.split('-')[1] - 1, iso.split('-')[2]).getDay();
+        var pat = OT_PATTERNS[(idx + d) % OT_PATTERNS.length];
+        var ent = {
+          id: 'OTE-' + pad(otSeq++, 5),
+          empCode: e.code, name: e.name, position: e.position,
+          sheet: sheetKey,
+          date: iso,
+          code: dow === 0 ? 2 : ((idx + d) % 11 === 0 ? 3 : 1),
+          m1: toMin(pat.m1), m2: toMin(pat.m2),
+          a1: toMin(pat.a1), a2: toMin(pat.a2),
+          notes: OT_NOTES[(idx + d) % OT_NOTES.length]
+        };
+        var h = otHours(ent);
+        if (h > left + 2) { d += 1; continue; }
+        entries.push(ent);
+        left -= h;
+        d += 1 + ((idx + d) % 3);
+      }
+    });
+
+    otSheets[periodCode] = {
+      period: periodCode,
+      locked: !!locked, lockedBy: locked ? 'Sinta Maharani' : null,
+      lockedAt: locked ? '2026-09-23 07:45' : null,
+      generated: !!locked, generatedAt: locked ? '2026-09-23 07:52' : null,
+      sampleChecked: !!locked, handedOff: !!locked,
+      createdFrom: null,
+      entries: entries
+    };
+    return otSheets[periodCode];
+  }
+
+  buildOtSheet('AGU-2026', true);
+  buildOtSheet('SEP-2026', false);
+
+  /* Empat baris contoh yang bermasalah supaya pemeriksaan ada isinya */
+  (function seedOtIssues() {
+    var sh = otSheets['SEP-2026'];
+    if (sh.entries.length > 400) {
+      sh.entries[40].m2 = sh.entries[40].m1;           /* durasi nol */
+      sh.entries[120].code = 0;                        /* kode kosong */
+      sh.entries[260].a2 = sh.entries[260].a1 - 180;   /* selesai sebelum mulai */
+      var dup = sh.entries[330];
+      sh.entries.push({
+        id: 'OTE-' + pad(otSeq++, 5), empCode: dup.empCode, name: dup.name,
+        position: dup.position, sheet: dup.sheet, date: dup.date, code: dup.code,
+        m1: dup.m1, m2: dup.m2, a1: dup.a1, a2: dup.a2, notes: dup.notes
+      });
+    }
+  })();
+
+  function otEntriesOf(sheet, sheetKey) {
+    return sheetKey ? sheet.entries.filter(function (e) { return e.sheet === sheetKey; }) : sheet.entries;
+  }
+
+  function otByEmployee(sheet, sheetKey) {
+    var map = {};
+    otEntriesOf(sheet, sheetKey).forEach(function (e) {
+      if (!map[e.empCode]) {
+        map[e.empCode] = { code: e.empCode, name: e.name, position: e.position,
+          sheet: e.sheet, hours: 0, rows: 0, amount: 0 };
+      }
+      var h = otHours(e);
+      var mult = (otCodeBy[e.code] || { mult: 1.5 }).mult;
+      var emp = byCode[e.empCode];
+      var hourly = emp ? emp.pay.pokok / rates.overtimeDivisor : 0;
+      map[e.empCode].hours += h;
+      map[e.empCode].rows++;
+      map[e.empCode].amount += Math.round(h * hourly * mult);
+    });
+    return Object.keys(map).map(function (k) { return map[k]; })
+      .sort(function (a, b) { return b.hours - a.hours; });
+  }
+
+  function otSheetTotals(sheet, sheetKey) {
+    var rows = otEntriesOf(sheet, sheetKey);
+    var t = { rows: rows.length, hours: 0, people: 0, amount: 0, overCap: 0 };
+    rows.forEach(function (e) { t.hours += otHours(e); });
+    var per = otByEmployee(sheet, sheetKey);
+    t.people = per.length;
+    per.forEach(function (p) {
+      t.amount += p.amount;
+      if (p.hours > OT_CAP) t.overCap++;
+    });
+    return t;
+  }
+
+  function otIssues(sheet, sheetKey) {
+    var rows = otEntriesOf(sheet, sheetKey);
+    var out = [];
+    var seen = {};
+    var valid = periodDates(sheet.period);
+    var validSet = {};
+    valid.forEach(function (d) { validSet[d] = true; });
+
+    rows.forEach(function (e) {
+      var h = otHours(e);
+      var who = e.name + ' · ' + UI_dateShort(e.date);
+
+      if (!otCodeBy[e.code]) {
+        out.push({ id: e.id, who: who, severity: 'BLOCKING',
+          message: 'Kode lembur kosong atau tidak dikenali — upah tidak bisa dihitung' });
+      }
+      if (h <= 0) {
+        out.push({ id: e.id, who: who, severity: 'BLOCKING',
+          message: 'Durasi nol — jam mulai dan selesai sama' });
+      }
+      if (h > 16) {
+        out.push({ id: e.id, who: who, severity: 'BLOCKING',
+          message: 'Durasi ' + h.toFixed(1) + ' jam dalam satu hari — periksa jam masuk dan keluar' });
+      }
+      if (!validSet[e.date]) {
+        out.push({ id: e.id, who: who, severity: 'BLOCKING',
+          message: 'Tanggal di luar rentang periode ' + sheet.period });
+      }
+      var key = e.empCode + '|' + e.date + '|' + e.m1;
+      if (seen[key]) {
+        out.push({ id: e.id, who: who, severity: 'WARNING',
+          message: 'Baris ganda — tanggal dan jam mulai sama dengan baris lain' });
+      }
+      seen[key] = true;
+    });
+
+    otByEmployee(sheet, sheetKey).forEach(function (p) {
+      if (p.hours > OT_CAP) {
+        out.push({ id: p.code, who: p.name, severity: 'WARNING',
+          message: 'Total ' + p.hours.toFixed(0) + ' jam melewati ambang ' + OT_CAP + ' jam per periode' });
+      }
+    });
+
+    return out;
+  }
+
+  function UI_dateShort(iso) {
+    if (!iso) return '';
+    var p = iso.split('-');
+    return Number(p[2]) + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'][Number(p[1]) - 1];
+  }
+
+  function createOtPeriod(periodCode, sourceCode, mode) {
+    var entries = [];
+    if (mode === 'copy' && otSheets[sourceCode]) {
+      var offset = periodDates(periodCode)[0];
+      var srcFirst = periodDates(sourceCode)[0];
+      var shift = (new Date(offset) - new Date(srcFirst)) / 86400000;
+      otSheets[sourceCode].entries.forEach(function (e) {
+        var d = new Date(e.date);
+        d.setDate(d.getDate() + shift);
+        entries.push({
+          id: 'OTE-' + pad(otSeq++, 5), empCode: e.empCode, name: e.name,
+          position: e.position, sheet: e.sheet,
+          date: d.getFullYear() + '-' + pad(d.getMonth() + 1, 2) + '-' + pad(d.getDate(), 2),
+          code: e.code, m1: e.m1, m2: e.m2, a1: e.a1, a2: e.a2, notes: e.notes
+        });
+      });
+    }
+    otSheets[periodCode] = {
+      period: periodCode, locked: false, lockedBy: null, lockedAt: null,
+      generated: false, generatedAt: null, sampleChecked: false, handedOff: false,
+      createdFrom: mode === 'copy' ? sourceCode : null,
+      entries: entries
+    };
+    return otSheets[periodCode];
+  }
+
+  function addOtEntry(periodCode, rec) {
+    var e = byCode[rec.empCode];
+    var ent = {
+      id: 'OTE-' + pad(otSeq++, 5),
+      empCode: rec.empCode,
+      name: e ? e.name : rec.empCode,
+      position: e ? e.position : '',
+      sheet: e ? (divToSheet[e.division] || 'WHL') : (rec.sheet || 'WHL'),
+      date: rec.date, code: rec.code,
+      m1: rec.m1, m2: rec.m2, a1: rec.a1, a2: rec.a2,
+      notes: rec.notes || ''
+    };
+    otSheets[periodCode].entries.push(ent);
+    return ent;
+  }
+
   /* -------------------------------------------------------- demografi -- */
   function demographics(list) {
     list = list || employees;
@@ -1103,6 +1416,24 @@ var DB = (function () {
     sheetIssues: sheetIssues,
     sheetTotals: sheetTotals,
 
-    signer: { name: 'Evanora Radja', title: 'Finance PT. BTB', place: 'Wayafli' }
+    signer: { name: 'Evanora Radja', title: 'Finance PT. BTB', place: 'Wayafli' },
+
+    otSheetDefs: OT_SHEETS,
+    otColumns: otColumns,
+    otCodes: otCodes,
+    otCodeBy: otCodeBy,
+    otSheets: otSheets,
+    otHours: otHours,
+    otEntriesOf: otEntriesOf,
+    otByEmployee: otByEmployee,
+    otSheetTotals: otSheetTotals,
+    otIssues: otIssues,
+    createOtPeriod: createOtPeriod,
+    addOtEntry: addOtEntry,
+    periodDates: periodDates,
+    dayName: dayName,
+    toMin: toMin,
+    toTime: toTime,
+    divToSheet: divToSheet
   };
 })();
