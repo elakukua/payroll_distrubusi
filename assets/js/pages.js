@@ -34,221 +34,86 @@ var PAGES = (function () {
       (ico ? icon(ico, 13) : '') + esc(label) + '</button>';
   }
 
+  function emptyInputRow(columns, searching) {
+    return '<tr><td colspan="' + columns + '"><div class="empty">' + icon('search', 28) +
+      '<b>' + (searching ? 'Tidak ada data yang cocok' : 'Belum ada data pada periode ini') + '</b>' +
+      '<p>' + (searching ? 'Kosongkan pencarian atau ubah kata kunci.' : 'Isi tabel atau impor berkas CSV untuk memulai.') +
+      '</p></div></td></tr>';
+  }
+
   /* Periode yang sedang dilihat di ruang kendali. Disimpan di luar fungsi
      supaya pilihan filter bertahan saat halaman digambar ulang. */
   var dashPeriod = 'SEP-2026';
 
-  /* Untuk periode selain September, status per karyawan tidak disimpan
-     satu per satu di data contoh. Baris disusun ulang dari angka ringkasan
-     batch supaya papan tetap bisa ditampilkan untuk bulan mana pun. */
-  function rowsForPeriod(code) {
-    if (code === 'SEP-2026') return DB.deliveries;
-    var b = DB.batches.filter(function (x) { return x.period === code && x.docType === 'PAYSLIP'; })[0];
-    if (!b) return [];
-    var noMail = {};
-    DB.employees.forEach(function (e) { if (!e.email) noMail[e.code] = true; });
-    var failLeft = b.failed, pendLeft = b.pending, i = 0;
-    return DB.employees.map(function (e) {
-      i++;
-      if (noMail[e.code]) return { code: e.code, status: 'EXCEPTION' };
-      if (b.status !== 'COMPLETED') return { code: e.code, status: 'QUEUED' };
-      if (failLeft > 0 && i % 37 === 11) { failLeft--; return { code: e.code, status: 'FAILED' }; }
-      if (pendLeft > 0 && i % 53 === 29) { pendLeft--; return { code: e.code, status: 'PENDING' }; }
-      return { code: e.code, status: 'SENT' };
-    });
-  }
 
   /* =======================================================================
      1 · RUANG KENDALI
      ======================================================================= */
   function dashboard() {
-    var period = DB.periods.filter(function (p) { return p.code === dashPeriod; })[0] || DB.periods[2];
-    var b = DB.batches.filter(function (x) { return x.period === dashPeriod && x.docType === 'PAYSLIP'; })[0];
-    var rows = rowsForPeriod(dashPeriod);
-    var s = DB.summarise(rows);
-    var divs = DB.byDivision(rows);
-    var money = DB.periodTotals[dashPeriod];
-    var notRun = b && b.status !== 'COMPLETED';
+    var period = DB.periods.filter(function (p) { return p.code === dashPeriod; })[0];
+    var hasIssues = false, waiting = false;
+    var cards = [
+      { type: 'PAYSLIP', title: 'Slip gaji', rows: DB.deliveries },
+      { type: 'OVERTIME', title: 'Slip lembur', rows: DB.otDeliveries }
+    ].map(function (doc) {
+      var batch = DB.batches.filter(function (b) {
+        return b.period === dashPeriod && b.docType === doc.type;
+      })[0];
+      var rows = doc.rows.filter(function (r) { return r.period === dashPeriod; });
+      var summary = rows.length ? DB.summarise(rows) : null;
+      var historical = !summary && batch && batch.status === 'COMPLETED';
+      var sent = summary ? summary.delivered : (historical ? batch.sent : 0);
+      var target = summary ? summary.processed : (batch ? batch.processed : 0);
+      var failed = summary ? summary.failed : (historical ? batch.failed : 0);
+      var pending = summary ? summary.pending + summary.queued : (historical ? batch.pending : 0);
+      var exceptions = summary ? summary.exception : (batch ? batch.exception : 0);
+      var started = !!summary || historical;
+      var issue = failed + pending > 0;
+      hasIssues = hasIssues || issue;
+      waiting = waiting || (!!batch && !started);
+      var status = !started ? (batch ? 'Belum dikirim' : 'Belum ada batch')
+        : (issue ? 'Perlu ditindaklanjuti' : 'Pengiriman selesai');
 
-    var failedRows = rows.filter(function (r) { return r.status === 'FAILED'; });
-
-    var html = '';
-
-    /* Pemilih periode */
-    html += '<div class="period-bar">' +
-      '<div class="period-pick"><label for="periodSel">Periode payroll</label>' +
-      '<select id="periodSel">' +
-      DB.periods.map(function (p) {
-        return '<option value="' + p.code + '"' + (p.code === dashPeriod ? ' selected' : '') + '>' +
-          esc(p.label) + ' · ' + esc(p.range) + '</option>';
-      }).join('') + '</select></div>' +
-      '<div class="period-meta">' +
-      (notRun
-        ? '<span class="badge b-info"><i class="dot"></i>BELUM DIJALANKAN</span>'
-        : '<span class="badge b-sent"><i class="dot"></i>SIKLUS SELESAI</span>') +
-      (b ? '<span class="chip">' + esc(b.id) + '</span>' : '') +
-      '</div></div>';
-
-    /* Ringkasan dua jenis dokumen periode ini */
-    var otSh = DB.otSheets[dashPeriod];
-    var otT = otSh ? DB.otSheetTotals(otSh) : { rows: 0, people: 0, hours: 0, amount: 0, overCap: 0 };
-    var payDel = DB.deliveries.filter(function (r) { return r.period === dashPeriod; });
-    var otDel = DB.otDeliveries.filter(function (r) { return r.period === dashPeriod; });
-    var payDS = DB.summarise(payDel), otDS = DB.summarise(otDel);
-
-    html += '<div class="doc-split" style="margin-bottom:16px">' +
-      '<div class="doc-card d-pay"><div class="doc-card-head"><span class="doc-tag d-pay">Slip gaji</span>' +
-      '<b>' + (payDel.length ? num(payDS.delivered) + '/' + num(payDS.processed) : '—') + '</b></div>' +
-      (payDel.length ? UI.segbar(payDS)
-        : '<div class="segbar"><span class="seg-queued" style="width:100%"></span></div>') +
-      '<div class="doc-card-foot">' +
-      (payDel.length
-        ? UI.pct(payDS.rate) + '% terkirim · ' + num(payDS.failed) + ' gagal · nilai ' + UI.rupiahShort(money.bruto)
-        : 'Belum didistribusikan · nilai ' + UI.rupiahShort(money.bruto)) +
-      '</div></div>' +
-
-      '<div class="doc-card d-ot"><div class="doc-card-head"><span class="doc-tag d-ot">Slip lembur</span>' +
-      '<b>' + (otDel.length ? num(otDS.delivered) + '/' + num(otDS.processed) : num(otT.people)) + '</b></div>' +
-      (otDel.length ? UI.segbar(otDS)
-        : '<div class="segbar"><span class="seg-queued" style="width:100%"></span></div>') +
-      '<div class="doc-card-foot">' +
-      (otDel.length
-        ? UI.pct(otDS.rate) + '% terkirim · ' + num(otDS.failed) + ' gagal · ' + otT.hours.toFixed(0) + ' jam'
-        : num(otT.rows) + ' baris · ' + otT.hours.toFixed(0) + ' jam · belum didistribusikan') +
-      '</div></div>' +
-      '</div>';
-
-    /* Nilai payroll */
-    html += '<div class="grid g-4" style="margin-bottom:16px">' +
-      UI.kpi('Nilai payroll periode ini', UI.rupiahShort(money.bruto),
-        'Bruto ' + UI.rupiah(money.bruto), 'main') +
-      UI.kpi('Dibayarkan ke karyawan', UI.rupiahShort(money.netto),
-        'Setelah potongan', 'good') +
-      UI.kpi('PPh 21 dipotong', UI.rupiahShort(money.pph),
-        'Disetor perusahaan', '') +
-      UI.kpi('BPJS dipotong karyawan', UI.rupiahShort(money.bpjsEmployee),
-        'Perusahaan menanggung <b>' + UI.rupiahShort(money.bpjsEmployer) + '</b>', '') +
-      '</div>';
-
-    /* Lembur periode ini */
-    html += '<div class="grid g-4" style="margin-bottom:16px">' +
-      UI.kpi('Karyawan lembur', num(otT.people),
-        'Dari ' + num(DB.employees.length) + ' karyawan aktif', '') +
-      UI.kpi('Total jam lembur', otT.hours.toFixed(0),
-        num(otT.rows) + ' baris di 5 lembar divisi', '') +
-      UI.kpi('Perkiraan upah lembur', UI.rupiahShort(otT.amount),
-        'Sudah termasuk di nilai payroll', '') +
-      UI.kpi('Lewat ambang ' + DB.otCap + ' jam', num(otT.overCap),
-        otT.overCap ? 'Perlu ditinjau HR' : 'Tidak ada yang lewat',
-        otT.overCap ? 'warn' : 'good') +
-      '</div>';
-
-    if (!can('salaryDetail')) {
-      html += '<div style="margin-bottom:16px">' + UI.notice('n-info',
-        'Anda melihat angka gabungan saja',
-        'Peran Viewer hanya menampilkan total tingkat perusahaan. Rincian gaji per karyawan tidak dapat dibuka dari peran ini.') + '</div>';
-    }
-
-    /* Distribusi */
-    html += '<div class="grid g-4" style="margin-bottom:16px">' +
-      UI.kpi('Karyawan aktif', num(DB.employees.length), 'Di 8 divisi site', '') +
-      UI.kpi('Slip diproses', num(s.processed), '<b>' + s.exception + '</b> masuk pengecualian', '') +
-      UI.kpi('Berhasil terkirim', num(s.delivered),
-        s.retrySuccess ? '<b>' + s.retrySuccess + '</b> setelah kirim ulang' : 'Tanpa kirim ulang', 'good') +
-      UI.kpi('Perlu ditangani', num(s.failed + s.pending),
-        '<b>' + s.failed + '</b> gagal · <b>' + s.pending + '</b> menunggu',
-        (s.failed ? 'bad' : (s.pending ? 'warn' : 'good'))) +
-      '</div>';
-
-    /* Papan sel */
-    html += '<div class="card" style="margin-bottom:16px">' +
-      '<div class="card-head">' +
-      '<div><h3>Papan distribusi slip gaji · ' + esc(period.label) + '</h3>' +
-      '<p>Satu kotak mewakili satu karyawan. Arahkan kursor untuk melihat nama dan statusnya.</p></div>' +
-      '<div class="spacer"></div>' +
-      '<div style="text-align:right"><div style="font-size:24px;font-weight:600;letter-spacing:-.028em;line-height:1.1">' +
-      (notRun ? '—' : UI.pct(s.rate) + '%') + '</div>' +
-      '<div style="font-size:11.5px;color:var(--muted)">tingkat keberhasilan</div></div>' +
-      '</div>' +
-      (notRun
-        ? '<div class="empty" style="padding:38px 24px">' + icon('clock', 30) +
-          '<b>Batch ' + esc(period.label) + ' belum dijalankan</b>' +
-          '<p>Payroll tanggal 20 sudah selesai dihitung dan batch sudah lolos validasi. ' +
-          'Distribusi menunggu persetujuan.</p>' +
-          '<div style="margin-top:14px"><a class="btn btn-sm btn-primary" href="#/batches">Buka batch distribusi</a></div></div>'
-        : UI.board(rows)) +
-      '</div>';
-
-    html += '<div class="grid g-3-1" style="margin-bottom:16px">';
-
-    html += '<div class="stack">';
-    html += '<div class="card"><div class="card-head"><div><h3>Sebaran per divisi</h3>' +
-      '<p>Divisi lapangan paling sering bermasalah karena akun email baru dibuat menyusul.</p></div></div>' +
-      '<div class="card-body"><div class="divbar">' +
-      divs.map(function (d) {
-        var ds = { total: d.total, sent: d.delivered, retrySuccess: 0, pending: d.pending, failed: d.failed };
-        return '<div class="divbar-row"><span title="' + esc(d.name) + '">' + esc(d.name) + '</span>' +
-          UI.segbar(ds) + '<span>' + d.delivered + '/' + d.total + '</span></div>';
-      }).join('') + '</div></div></div>';
-
-    html += '<div class="card"><div class="card-head"><div><h3>Aktivitas terakhir</h3></div>' +
-      '</div>' +
-      '<div class="activity">' +
-      DB.audit.slice(0, 7).map(function (a) {
-        return '<div class="act-row"><div class="act-time">' + esc(a.ts.split(' ')[1]) + '</div>' +
-          '<div class="act-body"><b>' + esc(a.action) + '</b> · ' + esc(a.object) +
-          '<span>' + esc(a.actor) + ' — ' + esc(a.desc) + '</span></div></div>';
-      }).join('') + '</div></div>';
-    html += '</div>';
-
-    html += '<div class="stack">';
-
-    html += '<div class="card"><div class="card-head"><h3>Siklus payroll</h3></div><div class="card-body">' +
-      '<div class="defs" style="grid-template-columns:1fr">' +
-      '<div class="def"><span>Periode</span><b>' + esc(period.range) + '</b></div>' +
-      '<div class="def"><span>Distribusi</span><b>' +
-      (b && b.date ? UI.dateID(b.date) + ', ' + esc(b.start) : 'Belum dijalankan') + '</b></div>' +
-      '<div class="def"><span>Lama proses</span><b>' + (b && b.durationMin ? b.durationMin + ' menit' : '—') + '</b></div>' +
-      '<div class="def"><span>Jadwal rutin</span><b>Tanggal ' + DB.settings.scheduleDay + ' pukul ' + esc(DB.settings.scheduleTime) + ' WIT</b></div>' +
-      '</div><div style="margin-top:16px">' +
-      UI.notice('n-info', 'Distribusi otomatis dimatikan',
-        'Penjadwal hanya menyiapkan dan memvalidasi batch. Pengiriman tetap menunggu persetujuan manusia.') +
-      '</div></div></div>';
-
-    if (failedRows.length) {
-      html += '<div class="card"><div class="card-head"><div><h3>Perlu tindakan</h3>' +
-        '<p>' + failedRows.length + ' pengiriman belum berhasil</p></div></div>' +
-        '<div class="activity">' +
-        failedRows.slice(0, 5).map(function (r) {
-          var e = DB.byCode[r.code];
-          var f = DB.failByCode[r.errorCode] || { label: 'Ditolak server penerima' };
-          return '<div class="act-row" style="grid-template-columns:1fr auto;align-items:center">' +
-            '<div class="act-body"><b>' + esc(e.name) + '</b><span>' + esc(f.label) + '</span></div>' +
-            UI.badge('FAILED') + '</div>';
-        }).join('') +
-        '</div><div class="card-body" style="border-top:1px solid var(--line)">' +
-        '<a class="btn btn-sm btn-primary" href="#/failed">Buka pusat kirim ulang</a></div></div>';
-    }
-
-    html += '<div class="card"><div class="card-head"><h3>Kendali keamanan aktif</h3></div>' +
-      '<div class="checklist">' +
-      [['Masuk lewat akun Google perusahaan', 'Akses dicabut otomatis saat karyawan keluar'],
-       ['Slip terkunci password per karyawan', 'Password tidak pernah ditampilkan di layar mana pun'],
-       ['Persetujuan dua orang', 'Penyiap batch tidak boleh menyetujui batchnya sendiri'],
-       ['Jejak audit tidak bisa dihapus', 'Seluruh tindakan tercatat dengan pelaku dan waktunya'],
-       ['Rincian gaji dibatasi peran', 'Peran Viewer hanya melihat angka gabungan']]
-        .map(function (r) {
-          return '<div class="check-row"><span class="tick tick-ok">' + icon('check', 11) + '</span>' +
-            '<div><b>' + esc(r[0]) + '</b><span>' + esc(r[1]) + '</span></div><span></span></div>';
-        }).join('') + '</div></div>';
-
-    html += '</div></div>';
+      return '<section class="card control-document">' +
+        '<div class="control-document-head"><h2>' + doc.title + '</h2>' +
+        '<span class="badge ' + (!started ? 'b-neutral' : (issue ? 'b-pending' : 'b-sent')) + '">' +
+        '<i class="dot"></i>' + status + '</span></div>' +
+        '<div class="control-total">' +
+        (started ? '<strong>' + num(sent) + '</strong><span>dari ' + num(target) + ' slip diproses telah terkirim</span>'
+          : '<strong class="control-idle">—</strong><span>' +
+            (batch ? 'Menunggu kesiapan dan persetujuan batch' : 'Belum disiapkan untuk periode ini') + '</span>') +
+        '</div>' +
+        (started ? '<dl class="control-counts">' +
+          '<div><dt>Gagal</dt><dd' + (failed ? ' class="control-alert"' : '') + '>' + num(failed) + '</dd></div>' +
+          '<div><dt>Menunggu</dt><dd>' + num(pending) + '</dd></div>' +
+          '<div><dt>Tanpa email</dt><dd>' + num(exceptions) + '</dd></div></dl>'
+          : '<p class="control-note">' + (batch && exceptions
+            ? num(exceptions) + ' karyawan tanpa email perlu penyerahan manual.'
+            : 'Status pengiriman akan muncul setelah distribusi dimulai.') + '</p>') +
+        '<div class="control-document-foot">' +
+        '<span>' + (batch ? esc(batch.id) : 'Tidak ada batch') + '</span>' +
+        (historical ? '<span>Ringkasan arsip</span>' : '') +
+        '</div></section>';
+    }).join('');
 
     return {
-      html: html,
+      html: '<div class="control-center"><div class="control-heading">' +
+        '<div><p class="control-eyebrow">Ringkasan distribusi</p>' +
+        '<p class="control-caption">Status slip dan tindak lanjut untuk periode terpilih.</p></div>' +
+        '<div class="period-pick"><label for="periodSel">Periode</label><select id="periodSel">' +
+        DB.periods.map(function (p) {
+          return '<option value="' + esc(p.code) + '"' + (p.code === dashPeriod ? ' selected' : '') + '>' +
+            esc(p.label) + '</option>';
+        }).join('') + '</select></div></div>' +
+        '<p class="control-range">' + esc(period.range) + '</p>' +
+        '<div class="control-documents">' + cards + '</div>' +
+        '<div class="control-next"><div><h3>' +
+        (hasIssues ? 'Tindak lanjuti pengiriman' : (waiting ? 'Tinjau kesiapan batch' : 'Lihat rincian distribusi')) +
+        '</h3><p>' + (hasIssues ? 'Periksa status dan kendala pada batch periode ini. ' : '') +
+        'Pengiriman tetap memerlukan pemeriksaan acak dan persetujuan manusia.</p></div>' +
+        '<a class="btn btn-primary" href="#/batches">Buka batch distribusi →</a>' +
+        '</div></div>',
       mount: function () {
-        wireBoard();
-        UI.wireNoticeBoxes();
         var sel = q('#periodSel');
         if (sel) sel.addEventListener('change', function () {
           dashPeriod = this.value;
@@ -258,14 +123,6 @@ var PAGES = (function () {
     };
   }
 
-  function wireBoard() {
-    qa('.board i').forEach(function (cell) {
-      cell.addEventListener('click', function () {
-        var e = DB.byCode[this.dataset.code];
-        if (e) employeeDrawer(e.code);
-      });
-    });
-  }
 
   /* =======================================================================
      2 · DIREKTORI KARYAWAN
@@ -379,9 +236,7 @@ var PAGES = (function () {
 
     var host = UI.el('<div></div>');
     host.innerHTML =
-      '<p class="view-intro">Master karyawan yang dipakai sistem untuk mencocokkan slip dengan penerimanya. ' +
-      'Komponen gaji tersimpan di sini tetapi hanya bisa dibuka oleh peran yang berhak — ' +
-      'layar pemantauan distribusi tidak pernah menampilkannya.</p>' +
+      '<p class="view-intro">Data karyawan untuk pencocokan penerima slip. Rincian gaji hanya tersedia bagi peran yang berhak.</p>' +
       '<div class="grid g-4" style="margin-bottom:16px">' +
       UI.kpi('Total karyawan', num(DB.employees.length), 'ID permanen BTB-0001 ke atas', 'main') +
       UI.kpi('Usia rata-rata', UI.pct(d.avgAge) + ' th', 'Terbanyak di rentang 31–36', '') +
@@ -696,7 +551,7 @@ var PAGES = (function () {
     var code = e ? e.code : 'BTB-0001';
     UI.modal({
       title: 'Pratinjau email',
-      sub: 'Contoh pesan yang diterima karyawan — tidak ada email sungguhan yang dikirim',
+      sub: 'Contoh pesan yang diterima karyawan',
       wide: true,
       body:
         '<div class="mail">' +
@@ -719,7 +574,7 @@ var PAGES = (function () {
         '</div>' +
         '<div style="margin-top:14px">' +
         UI.notice('n-info', 'Prototype tidak mengirim email',
-          'Templat ini hanya pratinjau. Tidak ada koneksi ke server email mana pun dalam prototype ini.') +
+          'Pratinjau saja; tidak terhubung ke server email.') +
         '</div>',
       cancel: 'Tutup'
     });
@@ -757,57 +612,54 @@ var PAGES = (function () {
     ];
   }
 
+  function firstIncompleteStep(steps) {
+    return steps.filter(function (step) { return !step.done; })[0] || null;
+  }
+
   function currentStep(code) {
-    var st = payrollSteps(code);
-    for (var i = 0; i < st.length; i++) if (!st[i].done) return st[i];
-    return null;
+    return firstIncompleteStep(payrollSteps(code));
+  }
+
+  /* Tampilan bersama; status dan tindakan tiap jenis slip tetap eksplisit. */
+  function renderWorkflow(code, steps, options) {
+    var cur = firstIncompleteStep(steps);
+    var period = DB.periods.filter(function (p) { return p.code === code; })[0];
+    return '<div class="card stepper-card"><div class="card-head">' +
+      '<div><h3>Alur ' + esc(options.name) + ' ' + esc(period ? period.label : code) + '</h3>' +
+      '<p>' + (cur ? 'Langkah berjalan: ' + esc(cur.title) : 'Seluruh langkah selesai') + '</p></div>' +
+      '<div class="spacer"></div>' +
+      (cur && !cur.gate && cur.key !== 'input' && options.allowAuto
+        ? '<button class="btn btn-sm btn-primary" ' + options.autoAttr + '="' + esc(code) + '">' +
+          icon('play', 13) + 'Jalankan sampai siap diperiksa</button>' : '') +
+      '</div><div class="card-body"><div class="steps">' +
+      steps.map(function (step) {
+        var state = step.done ? 'done' : (cur && cur.n === step.n ? 'current' : 'idle');
+        return '<div class="step ' + state + (step.gate ? ' gate' : '') + '"' +
+          (state === 'current' ? ' aria-current="step"' : '') + '>' +
+          '<div class="step-mark"><i>' + (step.done ? '✓' : step.n) + '</i></div>' +
+          '<div class="step-body"><b>' + esc(step.title) + '</b><span>' +
+          esc(step.blocked && state === 'current' ? step.blocked : step.note) + '</span>' +
+          (step.gate ? '<em class="step-gate">' + icon('lock', 10) + ' gerbang manusia</em>' : '') +
+          '</div></div>';
+      }).join('') + '</div>' +
+      (cur ? '<div class="step-next"><div class="step-next-inner">' +
+        '<div><b>Langkah berikutnya</b><span>' + esc(cur.blocked || cur.note) + '</span></div>' +
+        (cur.blocked ? '<a class="btn btn-sm" href="' + options.inputHref + '">Perbaiki dulu</a>'
+          : '<button class="btn btn-sm btn-primary" ' + options.stepAttr + '="' + cur.key +
+            '" data-period="' + esc(code) + '">' + esc(options.labels[cur.key]) + ' →</button>') +
+        '</div></div>' : '') + '</div></div>';
   }
 
   function stepperHTML(code) {
-    var steps = payrollSteps(code);
-    var cur = currentStep(code);
-
-    return '<div class="card stepper-card"><div class="card-head">' +
-      '<div><h3>Alur payroll ' + esc((DB.periods.filter(function (p) { return p.code === code; })[0] || {}).label || code) + '</h3>' +
-      '<p>' + (cur ? 'Langkah berjalan: ' + esc(cur.title) : 'Seluruh langkah selesai') + '</p></div>' +
-      '<div class="spacer"></div>' +
-      (cur && !cur.gate && cur.key !== 'input'
-        ? '<button class="btn btn-sm btn-primary" data-autorun="' + code + '">' +
-          icon('play', 13) + 'Jalankan sampai siap diperiksa</button>'
-        : '') +
-      '</div><div class="card-body">' +
-
-      '<div class="steps">' +
-      steps.map(function (s) {
-        var state = s.done ? 'done' : (cur && cur.n === s.n ? 'current' : 'idle');
-        return '<div class="step ' + state + (s.gate ? ' gate' : '') + '">' +
-          '<div class="step-mark"><i>' + (s.done ? '✓' : s.n) + '</i></div>' +
-          '<div class="step-body"><b>' + esc(s.title) + '</b>' +
-          '<span>' + esc(s.blocked && state === 'current' ? s.blocked : s.note) + '</span>' +
-          (s.gate ? '<em class="step-gate">' + icon('lock', 10) + ' gerbang manusia</em>' : '') +
-          '</div></div>';
-      }).join('') +
-      '</div>' +
-
-      (cur ? '<div class="step-next">' + stepAction(code, cur) + '</div>' : '') +
-      '</div></div>';
-  }
-
-  function stepAction(code, cur) {
-    var label = {
-      input: 'Buka tabel input', lock: 'Kunci periode sekarang',
-      generate: 'Buat slip gaji', sample: 'Mulai pemeriksaan acak',
-      handoff: 'Serahkan ke batch distribusi', send: 'Buka batch untuk menyetujui'
-    }[cur.key];
-
-    var blocked = cur.blocked;
-    return '<div class="step-next-inner">' +
-      '<div><b>Langkah berikutnya</b><span>' + esc(blocked || cur.note) + '</span></div>' +
-      (blocked
-        ? '<a class="btn btn-sm" href="#/entry">Perbaiki dulu</a>'
-        : '<button class="btn btn-sm btn-primary" data-step="' + cur.key + '" data-period="' + code + '">' +
-          esc(label) + ' →</button>') +
-      '</div>';
+    return renderWorkflow(code, payrollSteps(code), {
+      name: 'payroll', allowAuto: true, autoAttr: 'data-autorun',
+      stepAttr: 'data-step', inputHref: '#/entry',
+      labels: {
+        input: 'Buka tabel input', lock: 'Kunci periode sekarang',
+        generate: 'Buat slip gaji', sample: 'Mulai pemeriksaan acak',
+        handoff: 'Serahkan ke batch distribusi', send: 'Buka batch untuk menyetujui'
+      }
+    });
   }
 
   function wireStepper() {
@@ -974,9 +826,7 @@ var PAGES = (function () {
     var blocking = issues.filter(function (i) { return i.severity === 'BLOCKING'; });
     var noMail = DB.employees.filter(function (e) { return !e.email; }).length;
 
-    var html = '<p class="view-intro">Slip dibuat dari data yang sudah dikunci di halaman input, ' +
-      'lalu diperiksa di sini sebelum diserahkan ke batch distribusi. ' +
-      'Satu langkah pemeriksaan ini yang memisahkan sistem ini dari sekadar mengirim lampiran massal.</p>';
+    var html = '<p class="view-intro">Buat slip dari payroll terkunci, lalu periksa sampelnya sebelum diserahkan ke batch distribusi.</p>';
 
     html += '<div class="period-bar">' +
       '<div class="period-pick"><label for="genPeriod">Periode payroll</label>' +
@@ -1438,10 +1288,7 @@ var PAGES = (function () {
     if (entryPage > pages) entryPage = pages;
     var slice = rows.slice((entryPage - 1) * ENTRY_SIZE, entryPage * ENTRY_SIZE);
 
-    var html = '<p class="view-intro">Tabel ini menggantikan lembar kerja payroll di Excel. ' +
-      'Kolomnya sengaja dibuat sama persis dengan yang sudah dipakai HR, ' +
-      'termasuk urutannya, supaya tidak perlu belajar cara input baru. ' +
-      'Total penghasilan, total potongan, dan take home pay dihitung ulang setiap kali Anda mengetik.</p>';
+    var html = '<p class="view-intro">Isi atau impor payroll. Total penghasilan, potongan, dan gaji bersih dihitung saat Anda mengetik.</p>';
 
     /* Pemilih periode */
     html += '<div class="period-bar">' +
@@ -1542,6 +1389,7 @@ var PAGES = (function () {
         '</tr>';
     });
 
+    if (!slice.length) html += emptyInputRow(DB.entryColumns.length + 6, !!entrySearch);
     html += '</tbody><tfoot><tr>' +
       '<td class="sticky-1"></td><td class="sticky-2"><b>Total seluruh karyawan</b></td>' +
       DB.entryColumns.map(function (c) {
@@ -1635,9 +1483,8 @@ var PAGES = (function () {
           'berdasarkan tarif di halaman pengaturan. Kolom penghasilan tidak disentuh.</p>' +
           '<p style="font-size:13px;color:var(--muted)">Nilai yang sudah Anda isi manual akan tertimpa. ' +
           'Setelah terisi, setiap sel tetap bisa diubah satu per satu.</p>' +
-          UI.notice('n-warn', 'Hasilnya tetap harus diperiksa',
-            'Tarif yang dipakai masih berstatus belum diverifikasi. Selama itu, anggap hasil hitung ini ' +
-            'sebagai bantuan pengisian, bukan angka final.'),
+          UI.notice('n-warn', 'Hasil hitung masih estimasi',
+            'Tarif belum diverifikasi. Periksa hasil sebelum memakai angka ini sebagai nilai final.'),
         confirm: 'Isi otomatis',
         onConfirm: function (close) {
           var r = DB.rates;
@@ -1780,10 +1627,7 @@ var PAGES = (function () {
     if (otPage > pages) otPage = pages;
     var slice = rows.slice((otPage - 1) * OT_SIZE, otPage * OT_SIZE);
 
-    var html = '<p class="view-intro">Berbeda dari payroll, satu baris di sini mewakili satu hari kerja lembur — ' +
-      'jadi satu karyawan bisa punya puluhan baris dalam satu periode. ' +
-      'Lembarnya juga dipisah per kelompok divisi, sama seperti berkas lembur yang sudah dipakai HR. ' +
-      'Total jam dihitung otomatis dari empat kolom waktu, termasuk shift yang melewati tengah malam.</p>';
+    var html = '<p class="view-intro">Satu baris per hari lembur, dikelompokkan menurut divisi. Jam dihitung otomatis, termasuk shift lintas tengah malam.</p>';
 
     html += '<div class="period-bar">' +
       '<div class="period-pick"><label for="otPeriodSel">Periode lembur</label>' +
@@ -1897,6 +1741,7 @@ var PAGES = (function () {
         '</td></tr>';
     });
 
+    if (!slice.length) html += emptyInputRow(13, !!otSearch);
     html += '</tbody><tfoot><tr>' +
       '<td class="sticky-1"></td><td class="sticky-2"><b>Total lembar ' + esc(sheetLabel(otSheetKey)) + '</b></td>' +
       '<td colspan="8"></td>' +
@@ -2386,16 +2231,9 @@ var PAGES = (function () {
           'Kalau ada di berkas Anda, kolomnya diabaikan.') + '</div>';
     });
 
-    q('#oiFile', m.root).addEventListener('change', function () {
-      var file = this.files && this.files[0];
-      if (!file) return;
-      var reader = new FileReader();
-      reader.onload = function () {
-        parsed = readOtImport(String(reader.result), file.name, periodCode);
-        renderOtImportResult(q('#oiResult', m.root), parsed);
-      };
-      reader.readAsText(file, 'utf-8');
-    });
+    bindImportFile(q('#oiFile', m.root), q('#oiResult', m.root),
+      function (text, filename) { return readOtImport(text, filename, periodCode); },
+      renderOtImportResult, function (value) { parsed = value; });
   }
 
   function parseDateLoose(raw) {
@@ -2533,37 +2371,14 @@ var PAGES = (function () {
   }
 
   function otStepperHTML(code) {
-    var steps = otSteps(code);
-    var cur = null;
-    for (var i = 0; i < steps.length; i++) if (!steps[i].done) { cur = steps[i]; break; }
-    var sh = DB.otSheets[code];
-
-    return '<div class="card stepper-card"><div class="card-head">' +
-      '<div><h3>Alur lembur ' + esc((DB.periods.filter(function (p) { return p.code === code; })[0] || {}).label || code) + '</h3>' +
-      '<p>' + (cur ? 'Langkah berjalan: ' + esc(cur.title) : 'Seluruh langkah selesai') + '</p></div>' +
-      '<div class="spacer"></div>' +
-      (cur && !cur.gate && cur.key !== 'input' && !sh.generated
-        ? '<button class="btn btn-sm btn-primary" data-otauto="' + code + '">' +
-          icon('play', 13) + 'Jalankan sampai siap diperiksa</button>' : '') +
-      '</div><div class="card-body"><div class="steps">' +
-      steps.map(function (s) {
-        var state = s.done ? 'done' : (cur && cur.n === s.n ? 'current' : 'idle');
-        return '<div class="step ' + state + (s.gate ? ' gate' : '') + '">' +
-          '<div class="step-mark"><i>' + (s.done ? '✓' : s.n) + '</i></div>' +
-          '<div class="step-body"><b>' + esc(s.title) + '</b><span>' +
-          esc(s.blocked && state === 'current' ? s.blocked : s.note) + '</span>' +
-          (s.gate ? '<em class="step-gate">' + icon('lock', 10) + ' gerbang manusia</em>' : '') +
-          '</div></div>';
-      }).join('') + '</div>' +
-      (cur ? '<div class="step-next"><div class="step-next-inner">' +
-        '<div><b>Langkah berikutnya</b><span>' + esc(cur.blocked || cur.note) + '</span></div>' +
-        (cur.blocked ? '<a class="btn btn-sm" href="#/otentry">Perbaiki dulu</a>'
-          : '<button class="btn btn-sm btn-primary" data-otstep="' + cur.key + '">' +
-            esc({ input: 'Buka tabel lembur', lock: 'Kunci periode', generate: 'Buat slip lembur',
-              sample: 'Mulai pemeriksaan acak', handoff: 'Serahkan ke batch', send: 'Buka batch' }[cur.key]) +
-            ' →</button>') +
-        '</div></div>' : '') +
-      '</div></div>';
+    return renderWorkflow(code, otSteps(code), {
+      name: 'lembur', allowAuto: !DB.otSheets[code].generated, autoAttr: 'data-otauto',
+      stepAttr: 'data-otstep', inputHref: '#/otentry',
+      labels: {
+        input: 'Buka tabel lembur', lock: 'Kunci periode', generate: 'Buat slip lembur',
+        sample: 'Mulai pemeriksaan acak', handoff: 'Serahkan ke batch', send: 'Buka batch'
+      }
+    });
   }
 
   function wireOtStepper() {
@@ -2661,9 +2476,7 @@ var PAGES = (function () {
     var per = DB.otByEmployee(sh);
     var withMail = per.filter(function (p) { var e = DB.byCode[p.code]; return e && e.email; }).length;
 
-    var html = '<p class="view-intro">Satu slip lembur memuat seluruh baris harian milik satu karyawan, ' +
-      'ditutup satu baris total jam — bentuknya sama dengan lembar lembur yang selama ini dicetak HR. ' +
-      'Hanya karyawan yang punya catatan lembur di periode ini yang mendapat slip.</p>';
+    var html = '<p class="view-intro">Buat satu slip per karyawan yang memiliki catatan lembur, berisi rincian harian dan total jam.</p>';
 
     html += '<div class="period-bar">' +
       '<div class="period-pick"><label for="otGenPeriod">Periode lembur</label>' +
@@ -3063,6 +2876,31 @@ var PAGES = (function () {
     setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 400);
   }
 
+  /* FileReader dan penanganan gagal sama; parser serta penerapan data berbeda. */
+  function bindImportFile(input, result, parse, render, setParsed) {
+    var revision = 0;
+    input.addEventListener('change', function () {
+      var selected = ++revision;
+      var file = this.files && this.files[0];
+      setParsed(null);
+      result.innerHTML = '';
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        if (selected !== revision) return;
+        var parsed = parse(String(reader.result), file.name);
+        setParsed(parsed);
+        render(result, parsed);
+      };
+      reader.onerror = function () {
+        if (selected !== revision) return;
+        result.innerHTML = UI.notice('n-bad', 'Berkas tidak bisa dibaca',
+          'Pastikan berkas disimpan sebagai CSV, bukan .xlsx atau .xls.');
+      };
+      reader.readAsText(file, 'utf-8');
+    });
+  }
+
   /* Pembaca CSV sederhana yang menangani tanda kutip dan baris ganda */
   function parseCSV(text) {
     text = text.replace(/^\uFEFF/, '');
@@ -3187,20 +3025,9 @@ var PAGES = (function () {
         '</tbody></table></div>';
     });
 
-    q('#impFile', m.root).addEventListener('change', function () {
-      var file = this.files && this.files[0];
-      if (!file) return;
-      var reader = new FileReader();
-      reader.onload = function () {
-        parsed = readImport(String(reader.result), file.name, sh);
-        renderImportResult(q('#impResult', m.root), parsed);
-      };
-      reader.onerror = function () {
-        q('#impResult', m.root).innerHTML = UI.notice('n-bad', 'Berkas tidak bisa dibaca',
-          'Pastikan berkas disimpan sebagai CSV, bukan .xlsx atau .xls.');
-      };
-      reader.readAsText(file, 'utf-8');
-    });
+    bindImportFile(q('#impFile', m.root), q('#impResult', m.root),
+      function (text, filename) { return readImport(text, filename, sh); },
+      renderImportResult, function (value) { parsed = value; });
   }
 
   function readImport(text, filename, sh) {
@@ -3699,10 +3526,8 @@ var PAGES = (function () {
 
     var host = UI.el('<div></div>');
     var head =
-      '<p class="view-intro">Komponen gaji, potongan BPJS, dan PPh 21 untuk seluruh karyawan. ' +
-      '<b>Angka resmi tetap berasal dari berkas payroll perusahaan.</b> Sistem menghitung ulang secara mandiri ' +
-      'lalu membandingkannya — kalau selisihnya melebihi ambang, barisnya ditandai supaya HR memeriksa rumus di berkas. ' +
-      'Ini fungsi pemeriksa, bukan pengganti perhitungan payroll.</p>' +
+      '<p class="view-intro">Bandingkan perhitungan sistem dengan payroll perusahaan. ' +
+      '<b>Angka resmi tetap mengikuti berkas perusahaan.</b></p>' +
 
       '<div class="grid g-4" style="margin-bottom:16px">' +
       UI.kpi('Bruto seluruh karyawan', UI.rupiahShort(t.bruto), num(t.count) + ' karyawan', 'main') +
@@ -3715,9 +3540,7 @@ var PAGES = (function () {
     if (flagged.length) {
       head += '<div style="margin-bottom:16px">' + UI.notice('n-bad',
         flagged.length + ' baris berselisih dari berkas payroll',
-        'Sistem dan berkas Excel menghasilkan angka berbeda di ' + flagged.length + ' karyawan, di atas ambang ' +
-        DB.rates.crossCheckTolerance + '%. Ini biasanya berarti ada rumus yang tidak tersalin saat berkas dibuat ' +
-        'dari bulan sebelumnya. Periksa sebelum distribusi dijalankan.') + '</div>';
+        'Selisih melebihi ambang ' + DB.rates.crossCheckTolerance + '%. Periksa data dan rumus sebelum distribusi.') + '</div>';
     } else {
       head += '<div style="margin-bottom:16px">' + UI.notice('n-ok',
         'Seluruh baris cocok dengan berkas payroll',
@@ -3727,8 +3550,7 @@ var PAGES = (function () {
     if (!DB.rates.verified) {
       head += '<div style="margin-bottom:16px">' + UI.notice('n-warn',
         'Tarif potongan belum diverifikasi',
-        'Sistem masih memakai tarif contoh. Sebelum dipakai sungguhan, HR wajib memeriksa dan mengisi ' +
-        'tarif BPJS serta tabel TER PPh 21 yang berlaku di halaman pengaturan.') + '</div>';
+        'Hasil hitung masih estimasi. Periksa tarif BPJS dan TER PPh 21 di <a href="#/settings">Pengaturan</a>.') + '</div>';
     }
 
     host.innerHTML = head;
@@ -3740,8 +3562,7 @@ var PAGES = (function () {
      3 · BATCH PAYROLL
      ======================================================================= */
   function batches() {
-    var html = '<p class="view-intro">Setiap siklus distribusi dikemas sebagai satu batch. ' +
-      'Batch tidak bisa dikirim sebelum lolos validasi dan disetujui orang kedua.</p>';
+    var html = '<p class="view-intro">Pantau kesiapan dan pengiriman setiap batch.</p>';
 
     /* Alur periode yang sedang dikerjakan, supaya HR tahu posisinya */
     if (can('salaryDetail') && DB.entrySheets[entryPeriod]) {
@@ -3875,7 +3696,8 @@ var PAGES = (function () {
       sub: b.id + ' · ' + b.label,
       body:
         UI.notice('n-warn', 'Anda akan mengirim ' + target + ' dokumen rahasia',
-          'Email yang sudah terkirim tidak bisa ditarik kembali. Pastikan pemeriksaan acak sudah dilakukan ' +
+          'Prototipe ini hanya menyimulasikan pengiriman; tidak ada email sungguhan yang dikirim. ' +
+          'Pada sistem produksi, email terkirim tidak bisa ditarik kembali. Pastikan pemeriksaan acak sudah dilakukan ' +
           'dan validasi tidak menyisakan kesalahan penghambat.') +
         '<div style="margin-top:16px" class="defs">' +
         '<div class="def"><span>Penerima</span><b>' + target + ' karyawan</b></div>' +
@@ -4013,8 +3835,7 @@ var PAGES = (function () {
      ======================================================================= */
   function matching() {
     var mt = DB.matching;
-    var html = '<p class="view-intro">Langkah pertama setiap batch: menghubungkan berkas slip dengan karyawan pemiliknya. ' +
-      'Sistem mencocokkan berdasarkan ID karyawan pada nama berkas — bukan berdasarkan nama orang, karena nama bisa kembar dan salah ketik.</p>';
+    var html = '<p class="view-intro">Cocokkan slip dengan penerima menggunakan ID karyawan pada nama berkas.</p>';
 
     html += '<div class="grid g-4" style="margin-bottom:14px">' +
       UI.kpi('Berkas diterima', num(mt.filesFound), 'Diunggah sebagai satu arsip', 'main') +
@@ -4187,9 +4008,7 @@ var PAGES = (function () {
 
     var host = UI.el('<div></div>');
     host.innerHTML =
-      '<p class="view-intro">Satu baris untuk satu dokumen per karyawan, mencakup slip gaji dan slip lembur sekaligus. ' +
-      'Status di kolom pengiriman diambil dari jawaban server penerima, bukan dari asumsi sistem. ' +
-      'Pengiriman yang dipantulkan berubah statusnya sendiri dalam beberapa menit sampai beberapa jam.</p>' +
+      '<p class="view-intro">Pantau status slip gaji dan lembur per penerima. Status pengiriman pada prototipe ini adalah simulasi.</p>' +
 
       '<div class="doc-split">' +
       '<div class="doc-card d-pay"><div class="doc-card-head"><span class="doc-tag d-pay">Slip gaji</span>' +
@@ -4270,8 +4089,7 @@ var PAGES = (function () {
       grouped[k] = (grouped[k] || 0) + 1;
     });
 
-    var html = '<p class="view-intro">Kegagalan dikelompokkan menurut penyebab, karena penanganannya berbeda. ' +
-      'Kotak masuk penuh cukup dikirim ulang; berkas yang hilang harus diperbaiki di sumbernya dulu.</p>';
+    var html = '<p class="view-intro">Tangani kegagalan berdasarkan penyebabnya; perbaiki data sumber bila diperlukan sebelum kirim ulang.</p>';
 
     html += '<div class="grid g-4" style="margin-bottom:14px">' +
       UI.kpi('Perlu ditangani', num(rows.length), 'Pada batch September', 'bad') +
@@ -4521,10 +4339,8 @@ var PAGES = (function () {
         : '<span class="badge b-pending"><i class="dot"></i>BELUM DIVERIFIKASI</span>') +
       '</div><div class="card-body">' +
 
-      UI.notice('n-warn', 'Tarif tinggal di pengaturan, bukan di dalam kode',
-        'Tarif iuran dan tabel pajak berubah dari waktu ke waktu. Karena itu semuanya dibuat dapat diubah HR ' +
-        'tanpa perlu mengubah sistem. Angka yang terisi sekarang adalah <b>contoh</b> dan wajib diperiksa ' +
-        'terhadap peraturan yang berlaku sebelum dipakai.') +
+      UI.notice('n-warn', 'Periksa tarif sebelum digunakan',
+        'Angka terisi adalah <b>contoh</b>. Cocokkan tarif BPJS dan tabel TER PPh 21 dengan peraturan yang berlaku.') +
 
       '<h4 class="form-sep">BPJS Ketenagakerjaan</h4>' +
       '<div class="rate-grid">' +

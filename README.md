@@ -42,13 +42,19 @@ rewrite apa pun di sisi server.
 ## Struktur berkas
 
 ```
-index.html              Kerangka halaman dan layar masuk
+index.html              Hasil build satu berkas; jangan diedit langsung
+build.py                Penggabung sumber menjadi index.html
+src/index.src.html      Kerangka halaman dan layar masuk
 assets/css/app.css      Seluruh gaya, satu berkas, tanpa framework
 assets/js/data.js       Dummy database 252 karyawan (seed tetap)
 assets/js/ui.js         Komponen pakai ulang: tabel, modal, panel, toast
-assets/js/pages.js      Sebelas halaman
+assets/js/pages.js      Halaman aplikasi
 assets/js/app.js        Router, sidebar, kendali peran
 ```
+
+Setelah mengedit sumber di `assets/` atau `src/`, jalankan `python3 build.py`.
+Sertakan `index.html` hasil build dalam commit. Berkas ini tetap dapat dibuka
+langsung tanpa server; Google Fonts bersifat opsional dengan font pengganti lokal.
 
 Modular dan siap dikembangkan: saat naik ke produksi, `data.js` diganti
 panggilan API, sisanya sebagian besar bisa dipertahankan.
