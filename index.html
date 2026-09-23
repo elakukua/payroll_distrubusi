@@ -1415,6 +1415,168 @@ body.printing #printArea { display: block; }
   .slip-id div { grid-template-columns: 108px 1fr; }
 }
 
+/* ==========================================================================
+   STEPPER ALUR PAYROLL
+   ========================================================================== */
+
+.stepper-card { background: var(--surface); }
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
+  position: relative;
+}
+.step { position: relative; padding-right: 10px; }
+.step-mark { margin-bottom: 9px; position: relative; }
+.step-mark::before {
+  content: "";
+  position: absolute;
+  left: 26px; right: -10px; top: 12px;
+  height: 2px;
+  background: var(--line);
+}
+.step:last-child .step-mark::before { display: none; }
+.step.done .step-mark::before { background: var(--green-line); }
+
+.step-mark i {
+  display: grid; place-items: center;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--line-2);
+  color: var(--faint);
+  font-size: 11px; font-weight: 600; font-style: normal;
+  position: relative; z-index: 1;
+}
+.step.done .step-mark i { background: var(--green-500); border-color: var(--green-500); color: #fff; }
+.step.current .step-mark i {
+  background: var(--petrol-700); border-color: var(--petrol-700); color: #fff;
+  box-shadow: 0 0 0 4px rgba(13, 98, 116, .14);
+}
+
+.step-body b {
+  display: block; font-size: 12.5px; font-weight: 500;
+  color: var(--muted);
+  line-height: 1.35;
+}
+.step-body span { display: block; font-size: 11px; color: var(--faint); line-height: 1.45; margin-top: 2px; }
+.step.done .step-body b, .step.current .step-body b { color: var(--text); }
+.step.current .step-body b { font-weight: 600; }
+.step.current .step-body span { color: var(--muted); }
+
+.step-gate {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-style: normal; font-size: 10px;
+  color: var(--ochre);
+  margin-top: 5px;
+}
+
+.step-next {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.step-next-inner {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 12px 15px;
+  background: var(--petrol-050);
+  border: 1px solid var(--petrol-100);
+  border-radius: var(--r);
+}
+.step-next-inner b { display: block; font-size: 12.5px; }
+.step-next-inner span { font-size: 11.5px; color: var(--muted); }
+.step-next-inner .btn { margin-left: auto; }
+
+.auto-list { display: grid; gap: 7px; margin: 14px 0; }
+.auto-list div {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 12.5px;
+  padding: 8px 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.auto-list svg { color: var(--green); }
+
+/* ==========================================================================
+   PILIHAN & EDIT
+   ========================================================================== */
+
+.opt-list { display: grid; gap: 9px; }
+.opt {
+  display: grid; grid-template-columns: 20px 1fr;
+  gap: 11px; align-items: start;
+  padding: 12px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r);
+  cursor: pointer;
+  transition: border-color .13s, background .13s;
+}
+.opt:hover { border-color: var(--faint); background: var(--surface-2); }
+.opt:has(input:checked) { border-color: var(--petrol-500); background: var(--petrol-050); }
+.opt input { margin-top: 3px; min-height: 0; }
+.opt b { display: block; font-size: 13px; font-weight: 600; }
+.opt span { display: block; font-size: 12px; color: var(--muted); line-height: 1.55; margin-top: 3px; }
+.opt em {
+  display: block; font-style: normal;
+  font-size: 11px; color: var(--petrol-600);
+  margin-top: 5px;
+}
+
+.field label em.was {
+  font-style: normal;
+  color: var(--faint);
+  font-size: 10.5px;
+}
+
+.edit-sum {
+  display: grid; gap: 8px;
+  margin-top: 18px;
+  padding: 14px 15px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+.edit-sum div { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; }
+.edit-sum span { color: var(--muted); }
+.edit-sum b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.edit-sum .big {
+  border-top: 1px solid var(--line-2);
+  padding-top: 9px;
+  font-size: 13.5px;
+}
+.edit-sum .big span { color: var(--text); font-weight: 500; }
+.edit-sum .big b { font-weight: 600; font-size: 16px; color: var(--petrol-700); }
+.edit-sum .big.neg b { color: var(--red); }
+
+/* Pengalih tampilan tabel / kartu */
+.view-toggle { display: flex; border: 1px solid var(--line-2); border-radius: var(--r-sm); overflow: hidden; }
+.view-toggle button {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: inherit; font-size: 11.5px;
+  padding: 6px 11px;
+  border: 0; background: #fff;
+  color: var(--muted);
+  cursor: pointer;
+}
+.view-toggle button + button { border-left: 1px solid var(--line-2); }
+.view-toggle button:hover { background: var(--surface-2); }
+.view-toggle button.on { background: var(--petrol-700); color: #fff; font-weight: 500; }
+
+@media (max-width: 1240px) {
+  .steps { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px 0; }
+  .step:nth-child(3) .step-mark::before { display: none; }
+}
+@media (max-width: 700px) {
+  .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .step:nth-child(2n) .step-mark::before { display: none; }
+  .step-next-inner .btn { margin-left: 0; width: 100%; }
+}
+
+/* Baris slip yang bisa diklik untuk membuka pratinjau */
+.gen-row td { cursor: pointer; }
+
 </style>
 </head>
 <body>
@@ -2343,6 +2505,8 @@ var DB = (function () {
       lockedAt: locked ? '2026-09-22 07:58' : null,
       generated: !!locked,
       generatedAt: locked ? '2026-09-22 08:03' : null,
+      sampleChecked: !!locked,
+      handedOff: !!locked,
       rows: rows
     };
   }
@@ -2401,6 +2565,109 @@ var DB = (function () {
       t.bruto += x.bruto; t.potongan += x.potongan; t.thp += x.thp;
     });
     return t;
+  }
+
+  /* ------------------------------------------- pengelolaan periode --- */
+  var MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+    'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  var MON3 = ['JAN', 'FEB', 'MAR', 'APR', 'MEI', 'JUN', 'JUL', 'AGU', 'SEP', 'OKT', 'NOV', 'DES'];
+
+  /* Siklus payroll berjalan tanggal 21 sampai 20, jadi periode "November"
+     mencakup 21 Oktober sampai 20 November. */
+  function periodMeta(year, monthIdx) {
+    var prev = monthIdx === 0 ? 11 : monthIdx - 1;
+    var prevYear = monthIdx === 0 ? year - 1 : year;
+    return {
+      code: MON3[monthIdx] + '-' + year,
+      label: MONTHS[monthIdx] + ' ' + year,
+      range: '21 ' + MONTHS[prev].slice(0, 3) + ' ' + (prevYear !== year ? prevYear + ' ' : '') +
+        '– 20 ' + MONTHS[monthIdx].slice(0, 3) + ' ' + year,
+      year: year, monthIdx: monthIdx
+    };
+  }
+
+  /* Periode berikutnya sesudah yang terakhir ada di daftar */
+  function nextPeriod() {
+    var last = periods[periods.length - 1];
+    var i = MON3.indexOf(last.code.split('-')[0]);
+    var y = Number(last.code.split('-')[1]);
+    return i === 11 ? periodMeta(y + 1, 0) : periodMeta(y, i + 1);
+  }
+
+  /* Variabel yang berubah tiap bulan dikosongkan; komponen tetap dibawa.
+     Inilah perilaku yang diharapkan HR saat membuka bulan baru. */
+  var VARIABLE_KEYS = ['lembur', 'rapelAbsen', 'rapelLembur', 'rapelTunj', 'kompensasi', 'absen'];
+
+  function createPeriod(meta, sourceCode, mode) {
+    var src = sourceCode ? entrySheets[sourceCode] : null;
+    var srcByCode = {};
+    if (src) src.rows.forEach(function (r) { srcByCode[r.code] = r; });
+
+    var rows = employees.filter(function (e) { return e.status === 'active'; }).map(function (e) {
+      var v = blankValues();
+      var prev = srcByCode[e.code];
+
+      if (mode === 'full' && prev) {
+        entryColumns.forEach(function (c) { v[c.key] = prev.values[c.key]; });
+      } else if (mode === 'fixed' && prev) {
+        entryColumns.forEach(function (c) {
+          v[c.key] = VARIABLE_KEYS.indexOf(c.key) > -1 ? 0 : prev.values[c.key];
+        });
+      } else if (mode === 'fixed' && !prev) {
+        /* Karyawan baru yang belum pernah ada di periode sebelumnya */
+        v.pokok = e.pay.pokok;
+        v.tunjKehadiran = e.pay.tunjKehadiran;
+        v.tunjSkill = e.pay.tunjSkill;
+      }
+
+      return {
+        code: e.code, name: e.name, position: e.position,
+        values: v,
+        isNew: !prev,
+        note: !prev ? 'Karyawan baru — belum ada di periode sebelumnya' : ''
+      };
+    });
+
+    periods.push({ code: meta.code, label: meta.label, range: meta.range });
+    entrySheets[meta.code] = {
+      period: meta.code,
+      locked: false, lockedBy: null, lockedAt: null,
+      generated: false, generatedAt: null,
+      sampleChecked: false, handedOff: false,
+      createdFrom: sourceCode || null,
+      createdMode: mode,
+      rows: rows
+    };
+    periodTotals[meta.code] = {
+      bruto: 0, netto: 0, pph: 0, bpjsEmployee: 0, bpjsEmployer: 0,
+      lembur: 0, delivered: 0, count: rows.length
+    };
+    return entrySheets[meta.code];
+  }
+
+  /* Total periode disegarkan dari lembar entri supaya angka di ruang
+     kendali selalu mengikuti apa yang sedang diisi HR. */
+  function refreshPeriodTotals(code) {
+    var sh = entrySheets[code];
+    if (!sh) return;
+    var t = { bruto: 0, netto: 0, pph: 0, bpjsEmployee: 0, bpjsEmployer: 0, lembur: 0 };
+    sh.rows.forEach(function (r) {
+      var x = entryTotals(r);
+      t.bruto += x.bruto;
+      t.netto += x.thp;
+      t.pph += Number(r.values.pph) || 0;
+      t.bpjsEmployee += (Number(r.values.jht) || 0) + (Number(r.values.bpjsKes) || 0);
+      t.lembur += Number(r.values.lembur) || 0;
+    });
+    var prev = periodTotals[code] || {};
+    periodTotals[code] = {
+      bruto: t.bruto, netto: t.netto, pph: t.pph,
+      bpjsEmployee: t.bpjsEmployee,
+      bpjsEmployer: prev.bpjsEmployer || Math.round(t.bpjsEmployee * 2.8),
+      lembur: t.lembur,
+      delivered: prev.delivered || 0,
+      count: sh.rows.length
+    };
   }
 
   /* -------------------------------------------------------- demografi -- */
@@ -2501,6 +2768,12 @@ var DB = (function () {
     addEmployee: addEmployee,
 
     entryColumns: entryColumns,
+    blankValues: blankValues,
+    variableKeys: VARIABLE_KEYS,
+    periodMeta: periodMeta,
+    nextPeriod: nextPeriod,
+    createPeriod: createPeriod,
+    refreshPeriodTotals: refreshPeriodTotals,
     entrySheets: entrySheets,
     entryTotals: entryTotals,
     sheetIssues: sheetIssues,
@@ -3595,6 +3868,170 @@ var PAGES = (function () {
   }
 
   /* =======================================================================
+     ALUR PAYROLL — stepper yang dipakai bersama oleh halaman input,
+     pembuatan slip, dan batch.
+
+     Prinsipnya: semua langkah mekanis boleh diotomatiskan, tetapi alur
+     berhenti di dua gerbang yang harus dilewati manusia — pemeriksaan acak
+     dan persetujuan distribusi. Itu bukan keterbatasan, itu rancangan.
+     ======================================================================= */
+
+  function payrollSteps(code) {
+    var sh = DB.entrySheets[code];
+    var b = DB.batches.filter(function (x) { return x.period === code && x.docType === 'PAYSLIP'; })[0];
+    var issues = DB.sheetIssues(sh).filter(function (i) { return i.severity === 'BLOCKING'; });
+
+    return [
+      { n: 1, key: 'input', title: 'Isi data payroll', note: sh.rows.length + ' karyawan',
+        done: sh.locked || (!issues.length && sh.rows.length > 0),
+        blocked: issues.length ? issues.length + ' baris bermasalah' : null,
+        href: '#/entry', action: 'Buka tabel input' },
+      { n: 2, key: 'lock', title: 'Kunci periode', note: 'Mencegah data berubah setelah slip dibuat',
+        done: sh.locked, auto: true },
+      { n: 3, key: 'generate', title: 'Buat slip gaji', note: 'Satu berkas terkunci per karyawan',
+        done: sh.generated, auto: true },
+      { n: 4, key: 'sample', title: 'Pemeriksaan acak', note: 'Wajib dilakukan manusia — tidak diotomatiskan',
+        done: !!sh.sampleChecked, gate: true },
+      { n: 5, key: 'handoff', title: 'Serahkan ke distribusi', note: 'Slip dilampirkan ke batch',
+        done: !!sh.handedOff },
+      { n: 6, key: 'send', title: 'Setujui dan kirim', note: 'Persetujuan oleh orang kedua',
+        done: !!(b && b.status === 'COMPLETED'), gate: true, href: '#/batches' }
+    ];
+  }
+
+  function currentStep(code) {
+    var st = payrollSteps(code);
+    for (var i = 0; i < st.length; i++) if (!st[i].done) return st[i];
+    return null;
+  }
+
+  function stepperHTML(code) {
+    var steps = payrollSteps(code);
+    var cur = currentStep(code);
+
+    return '<div class="card stepper-card"><div class="card-head">' +
+      '<div><h3>Alur payroll ' + esc((DB.periods.filter(function (p) { return p.code === code; })[0] || {}).label || code) + '</h3>' +
+      '<p>' + (cur ? 'Langkah berjalan: ' + esc(cur.title) : 'Seluruh langkah selesai') + '</p></div>' +
+      '<div class="spacer"></div>' +
+      (cur && !cur.gate && cur.key !== 'input'
+        ? '<button class="btn btn-sm btn-primary" data-autorun="' + code + '">' +
+          icon('play', 13) + 'Jalankan sampai siap diperiksa</button>'
+        : '') +
+      '</div><div class="card-body">' +
+
+      '<div class="steps">' +
+      steps.map(function (s) {
+        var state = s.done ? 'done' : (cur && cur.n === s.n ? 'current' : 'idle');
+        return '<div class="step ' + state + (s.gate ? ' gate' : '') + '">' +
+          '<div class="step-mark"><i>' + (s.done ? '✓' : s.n) + '</i></div>' +
+          '<div class="step-body"><b>' + esc(s.title) + '</b>' +
+          '<span>' + esc(s.blocked && state === 'current' ? s.blocked : s.note) + '</span>' +
+          (s.gate ? '<em class="step-gate">' + icon('lock', 10) + ' gerbang manusia</em>' : '') +
+          '</div></div>';
+      }).join('') +
+      '</div>' +
+
+      (cur ? '<div class="step-next">' + stepAction(code, cur) + '</div>' : '') +
+      '</div></div>';
+  }
+
+  function stepAction(code, cur) {
+    var label = {
+      input: 'Buka tabel input', lock: 'Kunci periode sekarang',
+      generate: 'Buat slip gaji', sample: 'Mulai pemeriksaan acak',
+      handoff: 'Serahkan ke batch distribusi', send: 'Buka batch untuk menyetujui'
+    }[cur.key];
+
+    var blocked = cur.blocked;
+    return '<div class="step-next-inner">' +
+      '<div><b>Langkah berikutnya</b><span>' + esc(blocked || cur.note) + '</span></div>' +
+      (blocked
+        ? '<a class="btn btn-sm" href="#/entry">Perbaiki dulu</a>'
+        : '<button class="btn btn-sm btn-primary" data-step="' + cur.key + '" data-period="' + code + '">' +
+          esc(label) + ' →</button>') +
+      '</div>';
+  }
+
+  function wireStepper() {
+    qa('[data-step]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        runStep(this.dataset.period, this.dataset.step);
+      });
+    });
+    qa('[data-autorun]').forEach(function (btn) {
+      btn.addEventListener('click', function () { autoRun(this.dataset.autorun); });
+    });
+  }
+
+  function runStep(code, key) {
+    var sh = DB.entrySheets[code];
+    entryPeriod = code;
+    if (key === 'input') { App.go('#/entry'); return; }
+    if (key === 'lock') { App.go('#/entry'); setTimeout(function () { var b = q('#entLock'); if (b) b.click(); }, 140); return; }
+    if (key === 'generate') { App.go('#/generate'); setTimeout(function () { var b = q('#genRun'); if (b) b.click(); }, 140); return; }
+    if (key === 'sample') { App.go('#/generate'); setTimeout(function () { sampleCheck(sh); }, 140); return; }
+    if (key === 'handoff') { App.go('#/generate'); setTimeout(function () { handoff(sh); }, 140); return; }
+    if (key === 'send') { App.go('#/batches'); return; }
+  }
+
+  /* Menjalankan seluruh langkah mekanis berturut-turut, lalu berhenti.
+     Pemeriksaan acak sengaja tidak ikut dijalankan. */
+  function autoRun(code) {
+    var sh = DB.entrySheets[code];
+    var issues = DB.sheetIssues(sh).filter(function (i) { return i.severity === 'BLOCKING'; });
+    if (issues.length) {
+      UI.modal({
+        title: 'Belum bisa dijalankan',
+        body: UI.notice('n-bad', issues.length + ' baris masih bermasalah',
+          'Perbaiki dulu di tabel input sebelum alur bisa dilanjutkan otomatis.'),
+        cancel: 'Mengerti'
+      });
+      return;
+    }
+
+    var willLock = !sh.locked, willGen = !sh.generated;
+    if (!willLock && !willGen) {
+      UI.toast('Tidak ada yang perlu dijalankan', 'Langkah berikutnya butuh tindakan manusia.', 'info');
+      return;
+    }
+
+    UI.modal({
+      title: 'Jalankan langkah otomatis',
+      sub: code + ' · ' + sh.rows.length + ' karyawan',
+      body: '<p style="font-size:13px">Sistem akan menjalankan berturut-turut:</p>' +
+        '<div class="auto-list">' +
+        (willLock ? '<div>' + icon('check', 13) + 'Kunci periode</div>' : '') +
+        (willGen ? '<div>' + icon('check', 13) + 'Buat ' + sh.rows.length + ' slip gaji terkunci password</div>' : '') +
+        '</div>' +
+        UI.notice('n-warn', 'Alur berhenti sebelum pemeriksaan acak',
+          'Pemeriksaan isi slip dan persetujuan pengiriman tidak pernah diotomatiskan. ' +
+          'Keduanya harus dilakukan manusia, dan tercatat atas nama orang yang melakukannya.'),
+      confirm: 'Jalankan',
+      onConfirm: function (close) {
+        close();
+        if (willLock) {
+          sh.locked = true;
+          sh.lockedBy = App.user.name;
+          sh.lockedAt = '2026-09-23 11:02';
+          DB.audit.unshift({
+            ts: '2026-09-23 11:02', actor: App.user.name, role: App.user.role,
+            action: 'Periode payroll dikunci', object: code, result: 'Berhasil',
+            desc: 'Dikunci lewat alur otomatis, total take home pay ' + UI.rupiah(DB.sheetTotals(sh).thp)
+          });
+        }
+        entryPeriod = code;
+        if (willGen) {
+          App.go('#/generate');
+          setTimeout(function () { runGenerate(sh); }, 160);
+        } else {
+          UI.toast('Periode dikunci', 'Lanjut ke pembuatan slip.', 'ok');
+          App.go('#/generate');
+        }
+      }
+    });
+  }
+
+  /* =======================================================================
      14 · PEMBUATAN SLIP
      ======================================================================= */
 
@@ -3737,41 +4174,115 @@ var PAGES = (function () {
 
     html += '</div>';
 
-    /* Hasil */
+    /* Hasil — daftar per orang */
     if (sh.generated) {
+      var ready = sh.rows.filter(function (r) { var e = DB.byCode[r.code]; return e && e.email; });
+      var manual = sh.rows.length - ready.length;
+
+      html += '<div class="grid g-4" style="margin-bottom:16px">' +
+        UI.kpi('Slip dibuat', num(sh.rows.length), 'Semuanya terkunci password', 'main') +
+        UI.kpi('Siap kirim via email', num(ready.length), 'Punya alamat email terdaftar', 'good') +
+        UI.kpi('Diserahkan manual', num(manual), 'Tanpa email — dicetak HR', manual ? 'warn' : 'good') +
+        UI.kpi('Total take home pay', UI.rupiahShort(totals.thp), 'Sesuai data terkunci', '') +
+        '</div>';
+
       html += '<div class="card"><div class="card-head">' +
-        '<div><h3>Hasil pembuatan slip</h3><p>Dibuat ' + esc(sh.generatedAt || '') + ' · seluruh berkas terkunci password</p></div>' +
+        '<div><h3>Slip per karyawan</h3><p>Dibuat ' + esc(sh.generatedAt || '') +
+        ' · klik baris mana pun untuk melihat isi slipnya</p></div>' +
         '<div class="spacer"></div>' +
-        '<button class="btn btn-sm" id="genSample">' + icon('search', 13) + 'Pemeriksaan acak</button>' +
+        '<div class="view-toggle"><button data-gview="table" class="on">' + icon('scroll', 13) + 'Tabel</button>' +
+        '<button data-gview="cards">' + icon('grid', 13) + 'Kartu</button></div>' +
+        '</div>';
+
+      html += '<div class="filters">' +
+        '<div class="search-field">' + icon('search', 14) +
+        '<input type="search" id="genSearch" placeholder="Cari nama, ID, atau nama berkas…"></div>' +
+        '<select id="genFilter">' +
+        '<option value="">Semua tujuan</option>' +
+        '<option value="email">Kirim via email</option>' +
+        '<option value="print">Diserahkan manual</option>' +
+        '</select>' +
+        '<div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">' +
+        '<button class="btn btn-sm" id="genSample">' + icon('search', 13) +
+        (sh.sampleChecked ? 'Periksa acak lagi' : 'Pemeriksaan acak') + '</button>' +
         '<button class="btn btn-sm" id="genPrintAll">' + icon('print', 13) + 'Cetak semua</button>' +
-        '<button class="btn btn-sm btn-primary" id="genHandoff">' + icon('send', 13) + 'Serahkan ke distribusi</button>' +
-        '</div>';
+        '<button class="btn btn-sm btn-primary" id="genHandoff"' +
+        (sh.sampleChecked ? '' : ' disabled title="Lakukan pemeriksaan acak terlebih dahulu"') + '>' +
+        icon('send', 13) + 'Serahkan ke distribusi</button>' +
+        '</div></div>';
 
-      html += '<div class="filters"><div class="search-field">' + icon('search', 14) +
-        '<input type="search" id="genSearch" placeholder="Cari nama atau ID untuk membuka slipnya…"></div>' +
-        '<span style="font-size:12px;color:var(--muted);margin-left:auto">Klik kartu mana pun untuk melihat isi slipnya</span>' +
-        '</div>';
+      if (!sh.sampleChecked) {
+        html += '<div style="padding:0 16px 14px">' + UI.notice('n-warn',
+          'Pemeriksaan acak belum dilakukan',
+          'Tombol serahkan terkunci sampai lima slip dibuka dan dicocokkan. ' +
+          'Validasi otomatis memeriksa struktur data, bukan isi dokumen — hanya manusia yang bisa melakukan itu.') + '</div>';
+      } else {
+        html += '<div style="padding:0 16px 14px">' + UI.notice('n-ok',
+          'Pemeriksaan acak selesai',
+          'Seluruh ' + sh.rows.length + ' slip siap diserahkan ke batch distribusi. ' +
+          'Pengiriman masih menunggu persetujuan terpisah.') + '</div>';
+      }
 
-      html += '<div class="card-body"><div class="gen-grid" id="genGrid">' +
+      /* Tabel per orang */
+      html += '<div id="genTable" class="table-scroll" style="max-height:66vh;overflow:auto">' +
+        '<table class="data"><thead><tr>' +
+        '<th>ID</th><th>Karyawan</th><th>Divisi</th><th>Nama berkas</th>' +
+        '<th>Proteksi</th><th class="col-num">Take home pay</th>' +
+        '<th>Tujuan</th><th>Status</th><th class="col-actions"></th>' +
+        '</tr></thead><tbody>' +
         sh.rows.map(function (r) {
           var e = DB.byCode[r.code] || {};
           var t = DB.entryTotals(r);
-          return '<button class="gen-card" data-slip="' + r.code + '" data-find="' +
+          var dest = e.email ? 'email' : 'print';
+          return '<tr class="clickable gen-row" data-slip="' + r.code + '" data-dest="' + dest + '" data-find="' +
+            esc((r.code + ' ' + r.name + ' ' + (e.email || '')).toLowerCase()) + '">' +
+            '<td class="col-code">' + esc(r.code) + '</td>' +
+            '<td><b style="font-weight:500">' + esc(r.name) + '</b>' +
+            '<div style="font-size:10.5px;color:var(--muted)">' + esc(r.position) + '</div></td>' +
+            '<td style="color:var(--muted)">' + esc(e.divisionName || '—') + '</td>' +
+            '<td class="col-code">Slip_Gaji_' + esc(r.code) + '_' + esc(entryPeriod.replace('-', '')) + '.pdf</td>' +
+            '<td><span class="badge b-info"><i class="dot"></i>TERKUNCI</span></td>' +
+            '<td class="col-num"><b style="font-weight:600">' + UI.rupiah(t.thp) + '</b></td>' +
+            '<td>' + (e.email
+              ? '<span style="font-size:11.5px;color:var(--muted)">' + esc(e.email) + '</span>'
+              : '<span class="chip">cetak manual</span>') + '</td>' +
+            '<td>' + (sh.handedOff
+              ? '<span class="badge b-sent"><i class="dot"></i>DI BATCH</span>'
+              : sh.sampleChecked
+                ? '<span class="badge b-sent"><i class="dot"></i>SIAP KIRIM</span>'
+                : '<span class="badge b-pending"><i class="dot"></i>MENUNGGU PERIKSA</span>') + '</td>' +
+            '<td class="col-actions"><button class="btn btn-sm" data-slip2="' + r.code + '">Lihat slip</button></td>' +
+            '</tr>';
+        }).join('') +
+        '</tbody></table></div>';
+
+      /* Kartu */
+      html += '<div class="card-body" id="genCards" style="display:none"><div class="gen-grid">' +
+        sh.rows.map(function (r) {
+          var e = DB.byCode[r.code] || {};
+          var t = DB.entryTotals(r);
+          var dest = e.email ? 'email' : 'print';
+          return '<button class="gen-card" data-slip="' + r.code + '" data-dest="' + dest + '" data-find="' +
             esc((r.code + ' ' + r.name).toLowerCase()) + '">' +
             '<span class="gen-code">' + esc(r.code) + '</span>' +
             '<span class="gen-name">' + esc(r.name) + '</span>' +
             '<span class="gen-thp">' + UI.rupiah(t.thp) + '</span>' +
             '<span class="gen-mark ' + (e.email ? 'ok' : 'warn') + '">' +
-            (e.email ? icon('lock', 11) + ' email' : icon('print', 11) + ' cetak') + '</span>' +
+            (e.email ? icon('lock', 11) + ' siap kirim' : icon('print', 11) + ' cetak manual') + '</span>' +
             '</button>';
         }).join('') +
-        '</div></div></div>';
+        '</div></div>';
+
+      html += '<div class="table-foot"><span>' + num(sh.rows.length) + ' slip · ' +
+        num(ready.length) + ' via email · ' + num(manual) + ' cetak manual</span></div></div>';
     } else {
       html += '<div class="card"><div class="empty">' + icon('file', 34) +
         '<b>Belum ada slip untuk periode ini</b>' +
         '<p>Setelah data dikunci dan prasyarat terpenuhi, slip untuk seluruh karyawan akan dibuat di sini ' +
-        'lengkap dengan tata letak resmi dan proteksi password.</p></div></div>';
+        'lengkap dengan tata letak resmi, proteksi password, dan status kesiapan kirim per orang.</p></div></div>';
     }
+
+    html += '<div style="margin-top:16px">' + stepperHTML(entryPeriod) + '</div>';
 
     return { html: html, mount: mountGenerate };
   }
@@ -3794,16 +4305,49 @@ var PAGES = (function () {
     if (run) run.addEventListener('click', function () { runGenerate(sh); });
 
     qa('[data-slip]').forEach(function (c) {
-      c.addEventListener('click', function () { slipPreview(this.dataset.slip); });
-    });
-
-    var gs = q('#genSearch');
-    if (gs) gs.addEventListener('input', function () {
-      var v = this.value.toLowerCase();
-      qa('.gen-card').forEach(function (c) {
-        c.style.display = !v || c.dataset.find.indexOf(v) > -1 ? '' : 'none';
+      c.addEventListener('click', function (ev) {
+        if (ev.target.closest('[data-slip2]')) return;
+        slipPreview(this.dataset.slip);
       });
     });
+    qa('[data-slip2]').forEach(function (c) {
+      c.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        slipPreview(this.dataset.slip2);
+      });
+    });
+
+    function applyFilter() {
+      var gs = q('#genSearch'), gf = q('#genFilter');
+      var v = gs ? gs.value.toLowerCase() : '';
+      var d = gf ? gf.value : '';
+      qa('[data-find]').forEach(function (c) {
+        var okText = !v || c.dataset.find.indexOf(v) > -1;
+        var okDest = !d || c.dataset.dest === d;
+        c.style.display = okText && okDest ? '' : 'none';
+      });
+    }
+    var gs = q('#genSearch');
+    if (gs) gs.addEventListener('input', function () {
+      var caret = this.selectionStart;
+      applyFilter();
+      this.focus();
+      try { this.setSelectionRange(caret, caret); } catch (e) {}
+    });
+    var gf = q('#genFilter');
+    if (gf) gf.addEventListener('change', applyFilter);
+
+    qa('[data-gview]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var mode = this.dataset.gview;
+        qa('[data-gview]').forEach(function (x) { x.classList.toggle('on', x === b); });
+        var tb = q('#genTable'), cd = q('#genCards');
+        if (tb) tb.style.display = mode === 'table' ? '' : 'none';
+        if (cd) cd.style.display = mode === 'cards' ? '' : 'none';
+      });
+    });
+
+    wireStepper();
 
     var smp = q('#genSample');
     if (smp) smp.addEventListener('click', function () { sampleCheck(sh); });
@@ -3916,13 +4460,15 @@ var PAGES = (function () {
       cancel: 'Batal',
       confirm: 'Sudah saya periksa, semua cocok',
       onConfirm: function (close) {
+        sh.sampleChecked = true;
         DB.audit.unshift({
           ts: '2026-09-23 10:46', actor: App.user.name, role: App.user.role,
           action: 'Pemeriksaan acak', object: entryPeriod, result: 'Berhasil',
           desc: '5 slip dibuka acak dan dicocokkan manual: ' + picks.map(function (r) { return r.code; }).join(', ')
         });
         close();
-        UI.toast('Pemeriksaan tercatat', 'Slip siap diserahkan ke batch distribusi.', 'ok');
+        UI.toast('Pemeriksaan tercatat', 'Seluruh slip kini bertanda siap kirim.', 'ok');
+        App.rerender();
       }
     });
   }
@@ -3978,6 +4524,7 @@ var PAGES = (function () {
       confirm: 'Serahkan',
       onConfirm: function (close) {
         b.validationClear = true;
+        sh.handedOff = true;
         b.note = sh.rows.length + ' slip sudah dibuat dan lolos pemeriksaan acak. Menunggu persetujuan distribusi.';
         DB.audit.unshift({
           ts: '2026-09-23 10:52', actor: App.user.name, role: App.user.role,
@@ -4085,18 +4632,30 @@ var PAGES = (function () {
       '<div class="search-field">' + icon('search', 14) +
       '<input type="search" id="entSearch" placeholder="Cari nama, ID, atau jabatan…" value="' + esc(entrySearch) + '"></div>' +
       '<div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">' +
+      '<button class="btn btn-sm" id="entNewPeriod">' + icon('layers', 13) + 'Buka periode baru</button>' +
       (sh.locked
-        ? '<button class="btn btn-sm" id="entUnlock">' + icon('lock', 13) + 'Buka kunci periode</button>'
+        ? '<button class="btn btn-sm" id="entUnlock">' + icon('lock', 13) + 'Buka kunci untuk diedit</button>'
         : '<button class="btn btn-sm" id="entImport">' + icon('download', 13) + 'Impor dari Excel</button>' +
+          '<button class="btn btn-sm" id="entBulk">' + icon('grid', 13) + 'Ubah massal</button>' +
           '<button class="btn btn-sm" id="entAuto">' + icon('refresh', 13) + 'Hitung potongan otomatis</button>' +
           '<button class="btn btn-sm btn-primary" id="entLock">' + icon('shield', 13) + 'Kunci periode</button>') +
       '</div></div>';
+
+    if (sh.createdFrom) {
+      html += '<div style="padding:0 16px 14px">' + UI.notice('n-info',
+        'Periode ini dibuat dari ' + esc(sh.createdFrom),
+        sh.createdMode === 'fixed'
+          ? 'Komponen tetap seperti gaji pokok dan tunjangan dibawa dari periode sebelumnya. ' +
+            'Lembur, rapel, kompensasi, dan potongan absen dikosongkan karena nilainya berubah tiap bulan.'
+          : 'Seluruh nilai disalin apa adanya dari periode sebelumnya. Periksa kolom lembur dan rapel ' +
+            'sebelum dikunci — nilai itu biasanya tidak boleh sama dengan bulan lalu.') + '</div>';
+    }
 
     html += '<div class="table-scroll entry-scroll"><table class="data entry-table"><thead>' +
       '<tr class="entry-group"><th class="sticky-1"></th><th class="sticky-2"></th>' +
       '<th colspan="8" class="grp-in">Penghasilan</th>' +
       '<th colspan="4" class="grp-out">Potongan</th>' +
-      '<th colspan="3" class="grp-sum">Hasil</th></tr>' +
+      '<th colspan="4" class="grp-sum">Hasil</th></tr>' +
       '<tr><th class="sticky-1">ID</th><th class="sticky-2">Nama &amp; jabatan</th>' +
       DB.entryColumns.map(function (c) {
         return '<th class="col-num ' + (c.group === 'in' ? 'c-in' : 'c-out') + '" style="min-width:' + c.w + 'px">' +
@@ -4104,7 +4663,8 @@ var PAGES = (function () {
       }).join('') +
       '<th class="col-num c-sum">Total penghasilan</th>' +
       '<th class="col-num c-sum">Total potongan</th>' +
-      '<th class="col-num c-sum">Take home pay</th></tr></thead><tbody>';
+      '<th class="col-num c-sum">Take home pay</th>' +
+      '<th class="c-sum"></th></tr></thead><tbody>';
 
     slice.forEach(function (r) {
       var t = DB.entryTotals(r);
@@ -4120,7 +4680,8 @@ var PAGES = (function () {
         }).join('') +
         '<td class="col-num sum-in" data-sum="bruto">' + UI.rupiah(t.bruto) + '</td>' +
         '<td class="col-num sum-out" data-sum="potongan">' + UI.rupiah(t.potongan) + '</td>' +
-        '<td class="col-num sum-thp" data-sum="thp">' + UI.rupiah(t.thp) + '</td>' +
+        '<td class="col-num sum-thp' + (t.thp < 0 ? ' neg' : '') + '" data-sum="thp">' + UI.rupiah(t.thp) + '</td>' +
+        '<td class="col-actions"><button class="btn btn-sm" data-editrow="' + r.code + '">Edit</button></td>' +
         '</tr>';
     });
 
@@ -4134,6 +4695,7 @@ var PAGES = (function () {
       '<td class="col-num sum-in">' + UI.rupiahShort(totals.bruto) + '</td>' +
       '<td class="col-num sum-out">' + UI.rupiahShort(totals.potongan) + '</td>' +
       '<td class="col-num sum-thp">' + UI.rupiahShort(totals.thp) + '</td>' +
+      '<td></td>' +
       '</tr></tfoot></table></div>';
 
     /* Paginasi */
@@ -4152,19 +4714,8 @@ var PAGES = (function () {
     html += '<div class="table-foot"><span>Menampilkan ' + num(from) + '–' + num(to) + ' dari ' + num(rows.length) + ' karyawan</span>' +
       '<div class="pager">' + pager + '</div></div></div>';
 
-    /* Langkah berikutnya */
-    html += '<div class="card" style="margin-top:16px"><div class="card-head">' +
-      '<div><h3>Langkah berikutnya</h3><p>Setelah data benar, slip dibuat lalu diperiksa sebelum dikirim</p></div></div>' +
-      '<div class="card-body"><div class="flow">' +
-      flowStep(1, 'Input data payroll', 'Halaman ini', 'current') +
-      flowStep(2, 'Kunci periode', 'Mencegah data berubah setelah slip dibuat', sh.locked ? 'done' : '') +
-      flowStep(3, 'Buat slip', 'Slip PDF dibuat untuk seluruh karyawan', sh.generated ? 'done' : '') +
-      flowStep(4, 'Periksa hasil', 'Pemeriksaan acak sebelum distribusi', '') +
-      flowStep(5, 'Kirim', 'Serahkan ke batch distribusi', '') +
-      '</div>' +
-      '<div class="btn-row" style="margin-top:18px">' +
-      '<a class="btn btn-sm btn-primary" href="#/generate">' + icon('file', 13) + 'Lanjut ke pembuatan slip</a>' +
-      '</div></div></div>';
+    /* Alur payroll — stepper bersama */
+    html += '<div style="margin-top:16px">' + stepperHTML(entryPeriod) + '</div>';
 
     return { html: html, mount: mountEntry };
   }
@@ -4210,6 +4761,7 @@ var PAGES = (function () {
         var thp = q('[data-sum="thp"]', tr);
         thp.textContent = UI.rupiah(t.thp);
         thp.classList.toggle('neg', t.thp < 0);
+        DB.refreshPeriodTotals(entryPeriod);
       });
     });
 
@@ -4312,6 +4864,18 @@ var PAGES = (function () {
       });
     });
 
+    qa('[data-editrow]').forEach(function (b) {
+      b.addEventListener('click', function () { editRow(this.dataset.editrow); });
+    });
+
+    var np = q('#entNewPeriod');
+    if (np) np.addEventListener('click', newPeriodForm);
+
+    var bulk = q('#entBulk');
+    if (bulk) bulk.addEventListener('click', bulkEditForm);
+
+    wireStepper();
+
     var unlock = q('#entUnlock');
     if (unlock) unlock.addEventListener('click', function () {
       UI.modal({
@@ -4341,6 +4905,284 @@ var PAGES = (function () {
     var tbl = DB.terTable[cat];
     for (var i = 0; i < tbl.length; i++) if (bruto <= tbl[i][0]) return tbl[i][1];
     return tbl[tbl.length - 1][1];
+  }
+
+  /* -------------------------------------------- buka periode baru --- */
+  function newPeriodForm() {
+    var next = DB.nextPeriod();
+    var sources = DB.periods.slice().reverse();
+
+    UI.modal({
+      title: 'Buka periode payroll baru',
+      sub: 'Data bulan baru disiapkan dari periode sebelumnya',
+      wide: true,
+      body:
+        '<div class="form-grid">' +
+        '<div class="field"><label>Periode</label>' +
+        '<select id="npCode">' +
+        [next, DB.periodMeta(next.year, next.monthIdx === 11 ? 0 : next.monthIdx + 1)]
+          .map(function (m, i) {
+            return '<option value="' + m.code + '|' + esc(m.label) + '|' + esc(m.range) + '"' +
+              (i === 0 ? ' selected' : '') + '>' + esc(m.label) + '</option>';
+          }).join('') + '</select></div>' +
+        '<div class="field"><label>Salin dari periode</label>' +
+        '<select id="npSrc">' +
+        sources.map(function (p, i) {
+          return '<option value="' + p.code + '"' + (i === 0 ? ' selected' : '') + '>' + esc(p.label) + '</option>';
+        }).join('') + '</select></div>' +
+        '</div>' +
+
+        '<h4 class="form-sep">Cara penyiapan data</h4>' +
+        '<div class="opt-list">' +
+
+        '<label class="opt"><input type="radio" name="npMode" value="fixed" checked>' +
+        '<div><b>Bawa komponen tetap, kosongkan yang berubah</b>' +
+        '<span>Gaji pokok, tunjangan kehadiran, tunjangan skill, JHT, dan BPJS dibawa dari periode sebelumnya. ' +
+        'Lembur, rapel, kompensasi, dan potongan absen dikosongkan.</span>' +
+        '<em>Disarankan — ini yang biasanya diinginkan HR tiap bulan</em></div></label>' +
+
+        '<label class="opt"><input type="radio" name="npMode" value="full">' +
+        '<div><b>Salin seluruh nilai apa adanya</b>' +
+        '<span>Semua kolom sama dengan periode sebelumnya, termasuk lembur dan rapel.</span>' +
+        '<em>Hati-hati — lembur bulan lalu ikut tersalin dan harus diperiksa satu per satu</em></div></label>' +
+
+        '<label class="opt"><input type="radio" name="npMode" value="blank">' +
+        '<div><b>Mulai kosong</b>' +
+        '<span>Seluruh kolom nol. Dipakai kalau data akan diimpor dari berkas Excel.</span>' +
+        '<em>Nama dan jabatan karyawan tetap terisi dari master</em></div></label>' +
+
+        '</div>' +
+
+        '<div style="margin-top:16px">' +
+        UI.notice('n-info', 'Karyawan baru ikut masuk otomatis',
+          'Karyawan yang ditambahkan ke master setelah periode lalu akan muncul di tabel dengan penanda ' +
+          '<b>baru</b> dan komponen gaji dari data kepegawaiannya, bukan dari periode sebelumnya.') +
+        '</div>',
+      confirm: 'Buka periode',
+      onConfirm: function (close) {
+        var parts = q('#npCode').value.split('|');
+        var meta = { code: parts[0], label: parts[1], range: parts[2] };
+        if (DB.entrySheets[meta.code]) {
+          UI.toast('Periode sudah ada', meta.label + ' sudah dibuka sebelumnya.', 'bad');
+          return;
+        }
+        var src = q('#npSrc').value;
+        var mode = (qa('input[name="npMode"]').filter(function (r) { return r.checked; })[0] || {}).value || 'fixed';
+
+        var sh = DB.createPeriod(meta, mode === 'blank' ? null : src, mode);
+        DB.refreshPeriodTotals(meta.code);
+        DB.audit.unshift({
+          ts: '2026-09-23 11:10', actor: App.user.name, role: App.user.role,
+          action: 'Periode payroll dibuka', object: meta.code, result: 'Berhasil',
+          desc: sh.rows.length + ' baris disiapkan dari ' + (mode === 'blank' ? 'lembar kosong' : src) +
+            ' dengan cara ' + mode
+        });
+
+        entryPeriod = meta.code;
+        entryPage = 1;
+        close();
+        UI.toast('Periode ' + meta.label + ' dibuka', sh.rows.length + ' baris siap diisi.', 'ok');
+        App.rerender();
+      }
+    });
+  }
+
+  /* -------------------------------------------- edit satu karyawan --- */
+  function editRow(code) {
+    var sh = DB.entrySheets[entryPeriod];
+    var row = sh.rows.filter(function (r) { return r.code === code; })[0];
+    if (!row) return;
+    var e = DB.byCode[code] || {};
+    var prevSheet = sh.createdFrom ? DB.entrySheets[sh.createdFrom] : null;
+    var prev = prevSheet ? prevSheet.rows.filter(function (r) { return r.code === code; })[0] : null;
+
+    function fields(group) {
+      return DB.entryColumns.filter(function (c) { return c.group === group; }).map(function (c) {
+        var was = prev ? Number(prev.values[c.key]) || 0 : null;
+        return '<div class="field"><label>' + esc(c.label) +
+          (was !== null ? ' <em class="was">bulan lalu ' + UI.rupiah(was) + '</em>' : '') + '</label>' +
+          '<input type="number" step="1000" data-ek="' + c.key + '" value="' + (row.values[c.key] || 0) + '"' +
+          (sh.locked ? ' disabled' : '') + '></div>';
+      }).join('');
+    }
+
+    var d = UI.drawer({
+      title: row.name,
+      sub: code + ' · ' + row.position + ' · periode ' + entryPeriod,
+      body:
+        (sh.locked
+          ? UI.notice('n-warn', 'Periode sedang terkunci',
+            'Nilai hanya bisa dilihat. Buka kunci di halaman input kalau perlu diubah — ' +
+            'pembukaan kunci tercatat di jejak audit.') + '<div style="height:18px"></div>'
+          : '') +
+        (row.isNew
+          ? UI.notice('n-info', 'Karyawan baru di periode ini',
+            esc(row.note || 'Belum ada data periode sebelumnya sebagai pembanding.')) + '<div style="height:18px"></div>'
+          : '') +
+
+        '<h4 class="form-sep" style="margin-top:0">Penghasilan</h4>' +
+        '<div class="form-grid">' + fields('in') + '</div>' +
+
+        '<h4 class="form-sep">Potongan</h4>' +
+        '<div class="form-grid">' + fields('out') + '</div>' +
+
+        '<div class="edit-sum" id="editSum"></div>' +
+
+        '<h4 class="form-sep">Catatan</h4>' +
+        '<textarea id="editNote" rows="2" style="width:100%" placeholder="Alasan perubahan, misalnya koreksi absen atau rapel susulan"' +
+        (sh.locked ? ' disabled' : '') + '>' + esc(row.note || '') + '</textarea>' +
+        '<p style="font-size:11.5px;color:var(--muted);margin-top:6px">Catatan tersimpan bersama baris dan ikut terbaca saat audit.</p>' +
+
+        (sh.locked ? '' :
+          '<div class="btn-row" style="margin-top:20px">' +
+          '<button class="btn btn-sm btn-primary" id="editSave">Simpan perubahan</button>' +
+          (prev ? '<button class="btn btn-sm" id="editReset">Kembalikan ke nilai bulan lalu</button>' : '') +
+          '<button class="btn btn-sm" id="editZero">Kosongkan variabel</button>' +
+          '</div>'),
+      onReady: function (root, close) {
+        function readAll() {
+          var v = {};
+          qa('[data-ek]', root).forEach(function (i) { v[i.dataset.ek] = Number(i.value) || 0; });
+          return v;
+        }
+        function paint() {
+          var t = DB.entryTotals({ values: readAll() });
+          q('#editSum', root).innerHTML =
+            '<div><span>Total penghasilan</span><b>' + UI.rupiah(t.bruto) + '</b></div>' +
+            '<div><span>Total potongan</span><b>' + UI.rupiah(t.potongan) + '</b></div>' +
+            '<div class="big' + (t.thp < 0 ? ' neg' : '') + '"><span>Take home pay</span><b>' + UI.rupiah(t.thp) + '</b></div>';
+        }
+        paint();
+        qa('[data-ek]', root).forEach(function (i) { i.addEventListener('input', paint); });
+
+        var sv = q('#editSave', root);
+        if (sv) sv.addEventListener('click', function () {
+          var v = readAll();
+          var t = DB.entryTotals({ values: v });
+          if (t.thp < 0) {
+            UI.toast('Take home pay minus', 'Potongan melebihi penghasilan. Periksa kolom potongan dulu.', 'bad');
+            return;
+          }
+          DB.entryColumns.forEach(function (c) { row.values[c.key] = v[c.key] || 0; });
+          row.note = q('#editNote', root).value.trim();
+          DB.refreshPeriodTotals(entryPeriod);
+          DB.audit.unshift({
+            ts: '2026-09-23 11:16', actor: App.user.name, role: App.user.role,
+            action: 'Baris payroll diubah', object: code + ' · ' + entryPeriod, result: 'Berhasil',
+            desc: 'Take home pay menjadi ' + UI.rupiah(t.thp) + (row.note ? ' — ' + row.note : '')
+          });
+          close();
+          UI.toast('Perubahan disimpan', row.name + ' diperbarui.', 'ok');
+          App.rerender();
+        });
+
+        var rs = q('#editReset', root);
+        if (rs) rs.addEventListener('click', function () {
+          qa('[data-ek]', root).forEach(function (i) {
+            i.value = Number(prev.values[i.dataset.ek]) || 0;
+          });
+          paint();
+          UI.toast('Nilai bulan lalu dimuat', 'Belum tersimpan — tekan simpan kalau sudah benar.', 'info');
+        });
+
+        var zr = q('#editZero', root);
+        if (zr) zr.addEventListener('click', function () {
+          qa('[data-ek]', root).forEach(function (i) {
+            if (DB.variableKeys.indexOf(i.dataset.ek) > -1) i.value = 0;
+          });
+          paint();
+          UI.toast('Kolom variabel dikosongkan', 'Lembur, rapel, kompensasi, dan absen dinolkan.', 'info');
+        });
+      }
+    });
+    return d;
+  }
+
+  /* ------------------------------------------------- ubah massal --- */
+  function bulkEditForm() {
+    var sh = DB.entrySheets[entryPeriod];
+
+    UI.modal({
+      title: 'Ubah massal',
+      sub: 'Menerapkan satu nilai ke banyak baris sekaligus',
+      wide: true,
+      body:
+        '<div class="form-grid">' +
+        '<div class="field"><label>Kolom yang diubah</label><select id="bkCol">' +
+        DB.entryColumns.map(function (c) {
+          return '<option value="' + c.key + '">' + esc(c.label) + '</option>';
+        }).join('') + '</select></div>' +
+        '<div class="field"><label>Berlaku untuk</label><select id="bkScope">' +
+        '<option value="all">Seluruh ' + sh.rows.length + ' karyawan</option>' +
+        DB.divisions.map(function (d) {
+          var n = DB.employees.filter(function (e) { return e.division === d.key; }).length;
+          return '<option value="' + d.key + '">' + esc(d.name) + ' (' + n + ' orang)</option>';
+        }).join('') + '</select></div>' +
+        '<div class="field"><label>Cara penerapan</label><select id="bkOp">' +
+        '<option value="set">Ganti dengan nilai berikut</option>' +
+        '<option value="add">Tambahkan sejumlah</option>' +
+        '<option value="pct">Naikkan atau turunkan persen</option>' +
+        '<option value="zero">Kosongkan menjadi nol</option>' +
+        '</select></div>' +
+        '<div class="field"><label>Nilai</label><input type="number" id="bkVal" value="0" step="1000"></div>' +
+        '</div>' +
+        '<div id="bkPreview" style="margin-top:16px"></div>',
+      confirm: 'Terapkan',
+      onConfirm: function (close) {
+        var key = q('#bkCol').value, scope = q('#bkScope').value;
+        var op = q('#bkOp').value, val = Number(q('#bkVal').value) || 0;
+        var target = sh.rows.filter(function (r) {
+          if (scope === 'all') return true;
+          var e = DB.byCode[r.code];
+          return e && e.division === scope;
+        });
+        target.forEach(function (r) {
+          var cur = Number(r.values[key]) || 0;
+          r.values[key] = op === 'set' ? val
+            : op === 'add' ? cur + val
+              : op === 'pct' ? Math.round(cur * (1 + val / 100))
+                : 0;
+          if (r.values[key] < 0) r.values[key] = 0;
+        });
+        DB.refreshPeriodTotals(entryPeriod);
+        var colLabel = DB.entryColumns.filter(function (c) { return c.key === key; })[0].label;
+        DB.audit.unshift({
+          ts: '2026-09-23 11:20', actor: App.user.name, role: App.user.role,
+          action: 'Ubah massal kolom payroll', object: entryPeriod, result: 'Berhasil',
+          desc: colLabel + ' diubah pada ' + target.length + ' baris dengan cara ' + op
+        });
+        close();
+        UI.toast('Diterapkan ke ' + target.length + ' baris', colLabel + ' diperbarui.', 'ok');
+        App.rerender();
+      }
+    });
+
+    function preview() {
+      var key = q('#bkCol').value, scope = q('#bkScope').value;
+      var op = q('#bkOp').value, val = Number(q('#bkVal').value) || 0;
+      var target = sh.rows.filter(function (r) {
+        if (scope === 'all') return true;
+        var e = DB.byCode[r.code];
+        return e && e.division === scope;
+      });
+      var before = 0, after = 0;
+      target.forEach(function (r) {
+        var cur = Number(r.values[key]) || 0;
+        before += cur;
+        after += op === 'set' ? val : op === 'add' ? cur + val
+          : op === 'pct' ? Math.round(cur * (1 + val / 100)) : 0;
+      });
+      q('#bkPreview').innerHTML = UI.notice(
+        Math.abs(after - before) > before * 0.5 && before > 0 ? 'n-warn' : 'n-info',
+        target.length + ' baris akan berubah',
+        'Jumlah kolom ini sekarang <b>' + UI.rupiah(before) + '</b> dan akan menjadi <b>' +
+        UI.rupiah(after) + '</b>. Perubahan ini dicatat di jejak audit atas nama Anda.');
+    }
+    preview();
+    ['bkCol', 'bkScope', 'bkOp', 'bkVal'].forEach(function (id) {
+      q('#' + id).addEventListener('input', preview);
+      q('#' + id).addEventListener('change', preview);
+    });
   }
 
   /* =======================================================================
@@ -4480,6 +5322,11 @@ var PAGES = (function () {
     var html = '<p class="view-intro">Setiap siklus distribusi dikemas sebagai satu batch. ' +
       'Batch tidak bisa dikirim sebelum lolos validasi dan disetujui orang kedua.</p>';
 
+    /* Alur periode yang sedang dikerjakan, supaya HR tahu posisinya */
+    if (can('salaryDetail') && DB.entrySheets[entryPeriod]) {
+      html += '<div style="margin-bottom:16px">' + stepperHTML(entryPeriod) + '</div>';
+    }
+
     html += '<div class="stack">';
 
     DB.batches.slice().reverse().forEach(function (b) {
@@ -4557,6 +5404,7 @@ var PAGES = (function () {
     return {
       html: html,
       mount: function () {
+        wireStepper();
         qa('[data-fix]').forEach(function (btn) {
           btn.addEventListener('click', function () {
             var id = this.dataset.fix;
