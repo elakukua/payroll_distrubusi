@@ -683,6 +683,755 @@ var PAGES = (function () {
   }
 
   /* =======================================================================
+     14 · PEMBUATAN SLIP
+     ======================================================================= */
+
+  /* Replika tata letak slip yang berlaku di perusahaan. Dibuat sebagai HTML
+     agar bisa dicetak atau disimpan sebagai PDF lewat dialog cetak browser,
+     tanpa memerlukan pustaka tambahan. */
+  function slipHTML(row, periodCode) {
+    var e = DB.byCode[row.code] || {};
+    var period = DB.periods.filter(function (p) { return p.code === periodCode; })[0] || {};
+    var t = DB.entryTotals(row);
+    var sg = DB.signer;
+
+    function line(label, key, strong) {
+      var v = Number(row.values[key]) || 0;
+      return '<div class="slip-line' + (strong ? ' strong' : '') + '">' +
+        '<span>' + esc(label) + '</span><i>:</i><em>Rp</em>' +
+        '<b>' + (v ? v.toLocaleString('id-ID', { minimumFractionDigits: 2 }) : '-') + '</b></div>';
+    }
+    function total(label, v) {
+      return '<div class="slip-line strong"><span>' + esc(label) + '</span><i>:</i><em>Rp</em>' +
+        '<b>' + v.toLocaleString('id-ID', { minimumFractionDigits: 2 }) + '</b></div>';
+    }
+
+    return '<div class="slip">' +
+      '<div class="slip-head"><h4>' + esc(DB.company.toUpperCase()) + '</h4>' +
+      '<p>Periode ' + esc((period.range || '').toUpperCase()) + '</p></div>' +
+
+      '<div class="slip-id">' +
+      '<div><span>NAMA</span><b>' + esc(row.name.toUpperCase()) + '</b></div>' +
+      '<div><span>JABATAN</span><b>' + esc(row.position.toUpperCase()) + '</b></div>' +
+      '<div><span>ID KARYAWAN</span><b>' + esc(row.code) + '</b></div>' +
+      '</div>' +
+
+      '<div class="slip-band">Penghasilan</div>' +
+      line('Gaji Pokok', 'pokok') +
+      line('Lembur', 'lembur') +
+      line('Tunjangan Kehadiran', 'tunjKehadiran') +
+      line('Tunjangan Skill', 'tunjSkill') +
+      line('Rapel Absen', 'rapelAbsen') +
+      line('Rapel Lembur', 'rapelLembur') +
+      line('Rapel Tunjangan Kehadiran', 'rapelTunj') +
+      line('Kompensasi', 'kompensasi') +
+      total('Total', t.bruto) +
+
+      '<div class="slip-band">Potongan</div>' +
+      line('JHT', 'jht') +
+      line('BPJS Kesehatan', 'bpjsKes') +
+      line('Absen', 'absen') +
+      line('PPH 21', 'pph') +
+      total('Total', t.potongan) +
+
+      '<div class="slip-thp"><span>Take Home Pay</span>' +
+      '<b>' + t.thp.toLocaleString('id-ID', { minimumFractionDigits: 2 }) + '</b></div>' +
+
+      '<div class="slip-sign">' +
+      '<p>' + esc(sg.place) + ', ' + esc(signDate(periodCode)) + '</p>' +
+      '<div class="slip-rule"></div>' +
+      '<b>' + esc(sg.name.toUpperCase()) + '</b>' +
+      '<span>' + esc(sg.title.toUpperCase()) + '</span>' +
+      '</div>' +
+      '</div>';
+  }
+
+  function signDate(periodCode) {
+    return { 'JUL-2026': '24 Juli 2026', 'AGU-2026': '24 Agustus 2026',
+      'SEP-2026': '22 September 2026', 'OKT-2026': '22 Oktober 2026' }[periodCode] || '';
+  }
+
+  function generate() {
+    if (!can('salaryDetail')) {
+      return {
+        html: '<div class="card"><div class="empty">' + icon('lock', 34) +
+          '<b>Halaman ini tidak tersedia untuk peran Anda</b>' +
+          '<p>Pembuatan slip hanya dapat dijalankan oleh HR Admin.</p></div></div>'
+      };
+    }
+
+    var sh = DB.entrySheets[entryPeriod];
+    var period = DB.periods.filter(function (p) { return p.code === entryPeriod; })[0];
+    var totals = DB.sheetTotals(sh);
+    var issues = DB.sheetIssues(sh);
+    var blocking = issues.filter(function (i) { return i.severity === 'BLOCKING'; });
+    var noMail = DB.employees.filter(function (e) { return !e.email; }).length;
+
+    var html = '<p class="view-intro">Slip dibuat dari data yang sudah dikunci di halaman input, ' +
+      'lalu diperiksa di sini sebelum diserahkan ke batch distribusi. ' +
+      'Satu langkah pemeriksaan ini yang memisahkan sistem ini dari sekadar mengirim lampiran massal.</p>';
+
+    html += '<div class="period-bar">' +
+      '<div class="period-pick"><label for="genPeriod">Periode payroll</label>' +
+      '<select id="genPeriod">' +
+      DB.periods.map(function (p) {
+        return '<option value="' + p.code + '"' + (p.code === entryPeriod ? ' selected' : '') + '>' +
+          esc(p.label) + ' · ' + esc(p.range) + '</option>';
+      }).join('') + '</select></div>' +
+      '<div class="period-meta">' +
+      (sh.generated
+        ? '<span class="badge b-sent"><i class="dot"></i>SLIP SUDAH DIBUAT</span>'
+        : sh.locked
+          ? '<span class="badge b-info"><i class="dot"></i>SIAP DIBUAT</span>'
+          : '<span class="badge b-pending"><i class="dot"></i>DATA BELUM DIKUNCI</span>') +
+      '</div></div>';
+
+    /* Prasyarat */
+    html += '<div class="grid g-1-1" style="margin-bottom:16px">';
+
+    html += '<div class="card"><div class="card-head"><div><h3>Prasyarat</h3>' +
+      '<p>Semua harus hijau sebelum slip bisa dibuat</p></div></div><div class="checklist">' +
+      preReq('Data payroll terisi', sh.rows.length + ' baris, total ' + UI.rupiah(totals.thp), true) +
+      preReq('Tidak ada baris bermasalah',
+        blocking.length ? blocking.length + ' baris masih menghalangi' : 'Seluruh baris lolos pemeriksaan',
+        blocking.length === 0) +
+      preReq('Periode sudah dikunci',
+        sh.locked ? 'Dikunci ' + esc(sh.lockedAt || '') + ' oleh ' + esc(sh.lockedBy || '') : 'Kunci dulu di halaman input',
+        sh.locked) +
+      preReq('Tarif potongan diverifikasi',
+        DB.rates.verified ? 'Sudah ditandai HR' : 'Masih memakai tarif contoh',
+        DB.rates.verified, true) +
+      '</div></div>';
+
+    html += '<div class="card"><div class="card-head"><div><h3>Yang akan dihasilkan</h3></div></div>' +
+      '<div class="card-body">' +
+      '<div class="metric-row" style="margin-bottom:16px">' +
+      '<div class="metric"><span>Berkas slip</span><b>' + sh.rows.length + '</b></div>' +
+      '<div class="metric"><span>Dikirim via email</span><b>' + (sh.rows.length - noMail) + '</b></div>' +
+      '<div class="metric"><span>Dicetak manual</span><b>' + noMail + '</b></div>' +
+      '</div>' +
+      '<div class="defs">' +
+      '<div class="def"><span>Pola nama berkas</span><b style="font-family:var(--mono);font-size:11.5px">Slip_Gaji_&lt;ID&gt;_' +
+      esc(entryPeriod.replace('-', '')) + '.pdf</b></div>' +
+      '<div class="def"><span>Proteksi</span><b>Password acak per karyawan</b></div>' +
+      '<div class="def"><span>Penanda tangan</span><b>' + esc(DB.signer.name) + ' · ' + esc(DB.signer.title) + '</b></div>' +
+      '</div>' +
+      '<div class="btn-row" style="margin-top:18px">' +
+      '<button class="btn btn-sm btn-primary" id="genRun"' +
+      (sh.locked && !blocking.length ? '' : ' disabled title="Prasyarat belum terpenuhi"') + '>' +
+      icon('play', 13) + (sh.generated ? 'Buat ulang seluruh slip' : 'Buat slip untuk ' + sh.rows.length + ' karyawan') + '</button>' +
+      (sh.locked ? '' : '<a class="btn btn-sm" href="#/entry">Kembali ke input</a>') +
+      '</div></div></div>';
+
+    html += '</div>';
+
+    /* Hasil */
+    if (sh.generated) {
+      html += '<div class="card"><div class="card-head">' +
+        '<div><h3>Hasil pembuatan slip</h3><p>Dibuat ' + esc(sh.generatedAt || '') + ' · seluruh berkas terkunci password</p></div>' +
+        '<div class="spacer"></div>' +
+        '<button class="btn btn-sm" id="genSample">' + icon('search', 13) + 'Pemeriksaan acak</button>' +
+        '<button class="btn btn-sm" id="genPrintAll">' + icon('print', 13) + 'Cetak semua</button>' +
+        '<button class="btn btn-sm btn-primary" id="genHandoff">' + icon('send', 13) + 'Serahkan ke distribusi</button>' +
+        '</div>';
+
+      html += '<div class="filters"><div class="search-field">' + icon('search', 14) +
+        '<input type="search" id="genSearch" placeholder="Cari nama atau ID untuk membuka slipnya…"></div>' +
+        '<span style="font-size:12px;color:var(--muted);margin-left:auto">Klik kartu mana pun untuk melihat isi slipnya</span>' +
+        '</div>';
+
+      html += '<div class="card-body"><div class="gen-grid" id="genGrid">' +
+        sh.rows.map(function (r) {
+          var e = DB.byCode[r.code] || {};
+          var t = DB.entryTotals(r);
+          return '<button class="gen-card" data-slip="' + r.code + '" data-find="' +
+            esc((r.code + ' ' + r.name).toLowerCase()) + '">' +
+            '<span class="gen-code">' + esc(r.code) + '</span>' +
+            '<span class="gen-name">' + esc(r.name) + '</span>' +
+            '<span class="gen-thp">' + UI.rupiah(t.thp) + '</span>' +
+            '<span class="gen-mark ' + (e.email ? 'ok' : 'warn') + '">' +
+            (e.email ? icon('lock', 11) + ' email' : icon('print', 11) + ' cetak') + '</span>' +
+            '</button>';
+        }).join('') +
+        '</div></div></div>';
+    } else {
+      html += '<div class="card"><div class="empty">' + icon('file', 34) +
+        '<b>Belum ada slip untuk periode ini</b>' +
+        '<p>Setelah data dikunci dan prasyarat terpenuhi, slip untuk seluruh karyawan akan dibuat di sini ' +
+        'lengkap dengan tata letak resmi dan proteksi password.</p></div></div>';
+    }
+
+    return { html: html, mount: mountGenerate };
+  }
+
+  function preReq(title, note, ok, soft) {
+    var cls = ok ? 'tick-ok' : (soft ? 'tick-warn' : 'tick-bad');
+    var ico = ok ? 'check' : (soft ? 'bang' : 'x');
+    return '<div class="check-row"><span class="tick ' + cls + '">' + icon(ico, 11) + '</span>' +
+      '<div><b>' + esc(title) + '</b><span>' + note + '</span></div>' +
+      '<span class="chip">' + (ok ? 'siap' : (soft ? 'peringatan' : 'belum')) + '</span></div>';
+  }
+
+  function mountGenerate() {
+    var sh = DB.entrySheets[entryPeriod];
+
+    var sel = q('#genPeriod');
+    if (sel) sel.addEventListener('change', function () { entryPeriod = this.value; App.rerender(); });
+
+    var run = q('#genRun');
+    if (run) run.addEventListener('click', function () { runGenerate(sh); });
+
+    qa('[data-slip]').forEach(function (c) {
+      c.addEventListener('click', function () { slipPreview(this.dataset.slip); });
+    });
+
+    var gs = q('#genSearch');
+    if (gs) gs.addEventListener('input', function () {
+      var v = this.value.toLowerCase();
+      qa('.gen-card').forEach(function (c) {
+        c.style.display = !v || c.dataset.find.indexOf(v) > -1 ? '' : 'none';
+      });
+    });
+
+    var smp = q('#genSample');
+    if (smp) smp.addEventListener('click', function () { sampleCheck(sh); });
+
+    var pr = q('#genPrintAll');
+    if (pr) pr.addEventListener('click', function () { printAll(sh); });
+
+    var ho = q('#genHandoff');
+    if (ho) ho.addEventListener('click', function () { handoff(sh); });
+  }
+
+  function runGenerate(sh) {
+    var total = sh.rows.length;
+    var m = UI.modal({
+      title: 'Membuat slip',
+      sub: entryPeriod + ' · ' + total + ' karyawan',
+      wide: true,
+      body: '<div class="run-stat">' +
+        '<div><span>Slip dibuat</span><b id="gDone">0</b></div>' +
+        '<div><span>Dikunci password</span><b id="gLock">0</b></div>' +
+        '<div><span>Sisa</span><b id="gLeft">' + total + '</b></div>' +
+        '</div>' +
+        '<div class="segbar" style="height:11px"><span class="seg-sent" id="gBar" style="width:0"></span></div>' +
+        '<div class="run-log" id="gLog"></div>',
+      cancel: 'Tutup'
+    });
+
+    var i = 0;
+    var log = q('#gLog', m.root);
+    var timer = setInterval(function () {
+      var burst = 6;
+      while (burst-- > 0 && i < total) {
+        var r = sh.rows[i];
+        if (i % 9 === 0) {
+          log.insertAdjacentHTML('afterbegin',
+            '<div><b>Slip_Gaji_' + esc(r.code) + '_' + esc(entryPeriod.replace('-', '')) +
+            '.pdf</b> — dibuat dan dikunci</div>');
+        }
+        i++;
+      }
+      var a = q('#gDone', m.root), b = q('#gLock', m.root), c = q('#gLeft', m.root), bar = q('#gBar', m.root);
+      if (a) a.textContent = num(i);
+      if (b) b.textContent = num(i);
+      if (c) c.textContent = num(total - i);
+      if (bar) bar.style.width = (i / total * 100) + '%';
+
+      if (i >= total) {
+        clearInterval(timer);
+        sh.generated = true;
+        sh.generatedAt = '2026-09-23 10:41';
+        DB.audit.unshift({
+          ts: '2026-09-23 10:41', actor: App.user.name, role: App.user.role,
+          action: 'Slip gaji dibuat', object: entryPeriod, result: 'Berhasil',
+          desc: total + ' slip dibuat dari data terkunci dan dilindungi password per karyawan'
+        });
+        var foot = q('.modal-foot', m.root);
+        if (foot) {
+          foot.innerHTML = '<button class="btn" data-x>Tutup</button>' +
+            '<button class="btn btn-primary" data-x2>Mulai pemeriksaan acak</button>';
+          q('[data-x]', foot).addEventListener('click', function () { m.close(); App.rerender(); });
+          q('[data-x2]', foot).addEventListener('click', function () {
+            m.close(); App.rerender(); setTimeout(function () { sampleCheck(sh); }, 120);
+          });
+        }
+        UI.toast('Slip selesai dibuat', total + ' berkas siap diperiksa.', 'ok');
+      }
+    }, 70);
+  }
+
+  function slipPreview(code) {
+    var sh = DB.entrySheets[entryPeriod];
+    var row = sh.rows.filter(function (r) { return r.code === code; })[0];
+    if (!row) return;
+    var e = DB.byCode[code] || {};
+
+    UI.modal({
+      title: 'Slip gaji · ' + row.name,
+      sub: 'Slip_Gaji_' + code + '_' + entryPeriod.replace('-', '') + '.pdf · terkunci password',
+      wide: true,
+      body: '<div class="slip-frame">' + slipHTML(row, entryPeriod) + '</div>' +
+        '<div style="margin-top:14px">' +
+        UI.notice(e.email ? 'n-info' : 'n-warn',
+          e.email ? 'Akan dikirim ke ' + e.email : 'Tidak punya alamat email',
+          e.email
+            ? 'Berkas dilampirkan dalam keadaan terkunci. Password dikirim terpisah dan tidak pernah muncul di layar ini.'
+            : 'Slip ini masuk daftar pengecualian — dicetak dan diserahkan langsung, lalu serah terimanya dicatat.') +
+        '</div>',
+      cancel: 'Tutup',
+      confirm: 'Cetak slip ini',
+      onConfirm: function () { printSlips([row]); }
+    });
+  }
+
+  function sampleCheck(sh) {
+    var picks = [];
+    for (var i = 0; i < 5; i++) picks.push(sh.rows[(i * 47 + 13) % sh.rows.length]);
+
+    UI.modal({
+      title: 'Pemeriksaan acak',
+      sub: 'Lima slip dipilih acak oleh sistem — buka dan cocokkan isinya',
+      wide: true,
+      body: '<div class="slip-strip">' +
+        picks.map(function (r) { return '<div class="slip-mini">' + slipHTML(r, entryPeriod) + '</div>'; }).join('') +
+        '</div>' +
+        '<div style="margin-top:14px">' +
+        UI.notice('n-warn', 'Ini satu-satunya kendali terhadap kesalahan isi',
+          'Validasi otomatis memeriksa struktur data, bukan isi dokumen. Pastikan nama, jabatan, ' +
+          'dan angka pada tiap slip cocok dengan data karyawan yang bersangkutan sebelum melanjutkan.') +
+        '</div>',
+      cancel: 'Batal',
+      confirm: 'Sudah saya periksa, semua cocok',
+      onConfirm: function (close) {
+        DB.audit.unshift({
+          ts: '2026-09-23 10:46', actor: App.user.name, role: App.user.role,
+          action: 'Pemeriksaan acak', object: entryPeriod, result: 'Berhasil',
+          desc: '5 slip dibuka acak dan dicocokkan manual: ' + picks.map(function (r) { return r.code; }).join(', ')
+        });
+        close();
+        UI.toast('Pemeriksaan tercatat', 'Slip siap diserahkan ke batch distribusi.', 'ok');
+      }
+    });
+  }
+
+  function printSlips(rows) {
+    var host = q('#printArea');
+    host.innerHTML = rows.map(function (r) {
+      return '<div class="slip-page">' + slipHTML(r, entryPeriod) + '</div>';
+    }).join('');
+    document.body.classList.add('printing');
+    setTimeout(function () {
+      window.print();
+      document.body.classList.remove('printing');
+    }, 80);
+  }
+
+  function printAll(sh) {
+    UI.modal({
+      title: 'Cetak ' + sh.rows.length + ' slip',
+      body: '<p style="font-size:13px">Seluruh slip akan disusun satu halaman per karyawan lalu dibuka di dialog cetak browser. ' +
+        'Dari sana Anda bisa mencetak langsung atau memilih <b>Simpan sebagai PDF</b>.</p>' +
+        UI.notice('n-info', 'Untuk keperluan arsip dan karyawan tanpa email',
+          'Distribusi lewat email tetap memakai berkas terkunci yang dibuat sistem. ' +
+          'Cetakan ini dipakai untuk arsip Finance dan untuk karyawan yang slipnya diserahkan langsung.'),
+      confirm: 'Buka dialog cetak',
+      onConfirm: function (close) { close(); printSlips(sh.rows); }
+    });
+  }
+
+  function handoff(sh) {
+    var b = DB.batches.filter(function (x) {
+      return x.period === entryPeriod && x.docType === 'PAYSLIP';
+    })[0];
+    if (!b) {
+      UI.toast('Batch belum ada', 'Buat batch distribusi untuk periode ini terlebih dahulu.', 'bad');
+      return;
+    }
+    if (b.status === 'COMPLETED') {
+      UI.toast('Sudah didistribusikan', 'Batch periode ini sudah selesai dijalankan.', 'info');
+      return;
+    }
+
+    UI.modal({
+      title: 'Serahkan ke batch distribusi',
+      sub: b.id + ' · ' + sh.rows.length + ' slip',
+      body: '<p style="font-size:13px">Slip yang sudah dibuat akan dilampirkan ke batch distribusi. ' +
+        'Pengiriman tetap menunggu persetujuan terpisah — halaman ini tidak mengirim apa pun.</p>' +
+        '<div class="defs" style="margin-top:14px">' +
+        '<div class="def"><span>Batch tujuan</span><b>' + esc(b.id) + '</b></div>' +
+        '<div class="def"><span>Dikirim via email</span><b>' + (sh.rows.length - b.exception) + '</b></div>' +
+        '<div class="def"><span>Masuk pengecualian</span><b>' + b.exception + '</b></div>' +
+        '</div>',
+      confirm: 'Serahkan',
+      onConfirm: function (close) {
+        b.validationClear = true;
+        b.note = sh.rows.length + ' slip sudah dibuat dan lolos pemeriksaan acak. Menunggu persetujuan distribusi.';
+        DB.audit.unshift({
+          ts: '2026-09-23 10:52', actor: App.user.name, role: App.user.role,
+          action: 'Slip diserahkan ke distribusi', object: b.id, result: 'Berhasil',
+          desc: sh.rows.length + ' slip dilampirkan ke batch, menunggu persetujuan pengiriman'
+        });
+        close();
+        UI.toast('Diserahkan ke ' + b.id, 'Buka batch distribusi untuk menyetujui pengiriman.', 'ok');
+        App.go('#/batches');
+      }
+    });
+  }
+
+  /* =======================================================================
+     13 · INPUT PAYROLL
+     ======================================================================= */
+  var entryPeriod = 'OKT-2026';
+  var entryPage = 1;
+  var entrySearch = '';
+  var ENTRY_SIZE = 12;
+
+  function entry() {
+    if (!can('salaryDetail')) {
+      return {
+        html: '<div class="card"><div class="empty">' + icon('lock', 34) +
+          '<b>Halaman ini tidak tersedia untuk peran Anda</b>' +
+          '<p>Input payroll hanya dapat dibuka oleh HR Admin.</p>' +
+          '<div style="margin-top:14px"><a class="btn btn-sm" href="#/dashboard">Kembali ke ruang kendali</a></div>' +
+          '</div></div>'
+      };
+    }
+
+    var sh = DB.entrySheets[entryPeriod];
+    var period = DB.periods.filter(function (p) { return p.code === entryPeriod; })[0];
+    var totals = DB.sheetTotals(sh);
+    var issues = DB.sheetIssues(sh);
+    var blocking = issues.filter(function (i) { return i.severity === 'BLOCKING'; });
+    var warnings = issues.filter(function (i) { return i.severity === 'WARNING'; });
+    var issueByCode = {};
+    issues.forEach(function (i) {
+      if (i.severity !== 'INFO') issueByCode[i.code] = i.severity;
+    });
+
+    var rows = sh.rows;
+    if (entrySearch) {
+      var qq = entrySearch.toLowerCase();
+      rows = rows.filter(function (r) {
+        return (r.code + ' ' + r.name + ' ' + r.position).toLowerCase().indexOf(qq) > -1;
+      });
+    }
+    var pages = Math.max(1, Math.ceil(rows.length / ENTRY_SIZE));
+    if (entryPage > pages) entryPage = pages;
+    var slice = rows.slice((entryPage - 1) * ENTRY_SIZE, entryPage * ENTRY_SIZE);
+
+    var html = '<p class="view-intro">Tabel ini menggantikan lembar kerja payroll di Excel. ' +
+      'Kolomnya sengaja dibuat sama persis dengan yang sudah dipakai HR, ' +
+      'termasuk urutannya, supaya tidak perlu belajar cara input baru. ' +
+      'Total penghasilan, total potongan, dan take home pay dihitung ulang setiap kali Anda mengetik.</p>';
+
+    /* Pemilih periode */
+    html += '<div class="period-bar">' +
+      '<div class="period-pick"><label for="entPeriod">Periode payroll</label>' +
+      '<select id="entPeriod">' +
+      DB.periods.map(function (p) {
+        return '<option value="' + p.code + '"' + (p.code === entryPeriod ? ' selected' : '') + '>' +
+          esc(p.label) + ' · ' + esc(p.range) + '</option>';
+      }).join('') + '</select></div>' +
+      '<div class="period-meta">' +
+      (sh.locked
+        ? '<span class="badge b-neutral"><i class="dot"></i>TERKUNCI</span>'
+        : '<span class="badge b-info"><i class="dot"></i>SEDANG DIISI</span>') +
+      (sh.locked
+        ? '<span class="chip">dikunci ' + esc(sh.lockedAt || '') + ' oleh ' + esc(sh.lockedBy || '') + '</span>'
+        : '') +
+      '</div></div>';
+
+    html += '<div class="grid g-4" style="margin-bottom:16px">' +
+      UI.kpi('Total penghasilan', UI.rupiahShort(totals.bruto), num(totals.rows) + ' karyawan', 'main') +
+      UI.kpi('Total potongan', UI.rupiahShort(totals.potongan), 'JHT, BPJS, absen, PPh 21', '') +
+      UI.kpi('Total take home pay', UI.rupiahShort(totals.thp), 'Yang dibayarkan ke rekening', 'good') +
+      UI.kpi('Baris bermasalah', num(blocking.length + warnings.length),
+        '<b>' + blocking.length + '</b> penghambat · <b>' + warnings.length + '</b> peringatan',
+        blocking.length ? 'bad' : (warnings.length ? 'warn' : 'good')) +
+      '</div>';
+
+    if (blocking.length) {
+      html += '<div style="margin-bottom:16px">' + UI.notice('n-bad',
+        blocking.length + ' baris menghalangi pembuatan slip',
+        blocking.map(function (i) {
+          return '<div style="margin-top:4px"><b style="display:inline">' + esc(i.code) + ' ' + esc(i.name) +
+            '</b> — ' + esc(i.message) + '</div>';
+        }).join('')) + '</div>';
+    }
+    if (warnings.length) {
+      html += '<div style="margin-bottom:16px">' + UI.notice('n-warn',
+        warnings.length + ' baris perlu diperiksa, tetapi tidak menghalangi',
+        warnings.map(function (i) {
+          return '<div style="margin-top:4px"><b style="display:inline">' + esc(i.code) + ' ' + esc(i.name) +
+            '</b> — ' + esc(i.message) + '</div>';
+        }).join('')) + '</div>';
+    }
+
+    /* Tabel entri */
+    html += '<div class="card"><div class="filters">' +
+      '<div class="search-field">' + icon('search', 14) +
+      '<input type="search" id="entSearch" placeholder="Cari nama, ID, atau jabatan…" value="' + esc(entrySearch) + '"></div>' +
+      '<div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">' +
+      (sh.locked
+        ? '<button class="btn btn-sm" id="entUnlock">' + icon('lock', 13) + 'Buka kunci periode</button>'
+        : '<button class="btn btn-sm" id="entImport">' + icon('download', 13) + 'Impor dari Excel</button>' +
+          '<button class="btn btn-sm" id="entAuto">' + icon('refresh', 13) + 'Hitung potongan otomatis</button>' +
+          '<button class="btn btn-sm btn-primary" id="entLock">' + icon('shield', 13) + 'Kunci periode</button>') +
+      '</div></div>';
+
+    html += '<div class="table-scroll entry-scroll"><table class="data entry-table"><thead>' +
+      '<tr class="entry-group"><th class="sticky-1"></th><th class="sticky-2"></th>' +
+      '<th colspan="8" class="grp-in">Penghasilan</th>' +
+      '<th colspan="4" class="grp-out">Potongan</th>' +
+      '<th colspan="3" class="grp-sum">Hasil</th></tr>' +
+      '<tr><th class="sticky-1">ID</th><th class="sticky-2">Nama &amp; jabatan</th>' +
+      DB.entryColumns.map(function (c) {
+        return '<th class="col-num ' + (c.group === 'in' ? 'c-in' : 'c-out') + '" style="min-width:' + c.w + 'px">' +
+          esc(c.label) + '</th>';
+      }).join('') +
+      '<th class="col-num c-sum">Total penghasilan</th>' +
+      '<th class="col-num c-sum">Total potongan</th>' +
+      '<th class="col-num c-sum">Take home pay</th></tr></thead><tbody>';
+
+    slice.forEach(function (r) {
+      var t = DB.entryTotals(r);
+      var flag = issueByCode[r.code];
+      html += '<tr' + (flag ? ' class="row-' + flag.toLowerCase() + '"' : '') + ' data-code="' + r.code + '">' +
+        '<td class="sticky-1 col-code">' + esc(r.code) + '</td>' +
+        '<td class="sticky-2"><b style="font-weight:500">' + esc(r.name) + '</b>' +
+        '<div style="font-size:10.5px;color:var(--muted)">' + esc(r.position) + '</div></td>' +
+        DB.entryColumns.map(function (c) {
+          return '<td class="cell-num"><input type="number" step="1000" data-code="' + r.code +
+            '" data-key="' + c.key + '" value="' + (r.values[c.key] || 0) + '"' +
+            (sh.locked ? ' disabled' : '') + '></td>';
+        }).join('') +
+        '<td class="col-num sum-in" data-sum="bruto">' + UI.rupiah(t.bruto) + '</td>' +
+        '<td class="col-num sum-out" data-sum="potongan">' + UI.rupiah(t.potongan) + '</td>' +
+        '<td class="col-num sum-thp" data-sum="thp">' + UI.rupiah(t.thp) + '</td>' +
+        '</tr>';
+    });
+
+    html += '</tbody><tfoot><tr>' +
+      '<td class="sticky-1"></td><td class="sticky-2"><b>Total seluruh karyawan</b></td>' +
+      DB.entryColumns.map(function (c) {
+        var sum = 0;
+        sh.rows.forEach(function (r) { sum += Number(r.values[c.key]) || 0; });
+        return '<td class="col-num">' + UI.rupiahShort(sum) + '</td>';
+      }).join('') +
+      '<td class="col-num sum-in">' + UI.rupiahShort(totals.bruto) + '</td>' +
+      '<td class="col-num sum-out">' + UI.rupiahShort(totals.potongan) + '</td>' +
+      '<td class="col-num sum-thp">' + UI.rupiahShort(totals.thp) + '</td>' +
+      '</tr></tfoot></table></div>';
+
+    /* Paginasi */
+    var from = rows.length ? (entryPage - 1) * ENTRY_SIZE + 1 : 0;
+    var to = Math.min(entryPage * ENTRY_SIZE, rows.length);
+    var pager = '';
+    if (pages > 1) {
+      pager += '<button data-epage="' + (entryPage - 1) + '"' + (entryPage === 1 ? ' disabled' : '') + '>‹</button>';
+      var st = Math.max(1, Math.min(entryPage - 2, pages - 4));
+      var en = Math.min(pages, st + 4);
+      for (var p = st; p <= en; p++) {
+        pager += '<button data-epage="' + p + '"' + (p === entryPage ? ' aria-current="true"' : '') + '>' + p + '</button>';
+      }
+      pager += '<button data-epage="' + (entryPage + 1) + '"' + (entryPage === pages ? ' disabled' : '') + '>›</button>';
+    }
+    html += '<div class="table-foot"><span>Menampilkan ' + num(from) + '–' + num(to) + ' dari ' + num(rows.length) + ' karyawan</span>' +
+      '<div class="pager">' + pager + '</div></div></div>';
+
+    /* Langkah berikutnya */
+    html += '<div class="card" style="margin-top:16px"><div class="card-head">' +
+      '<div><h3>Langkah berikutnya</h3><p>Setelah data benar, slip dibuat lalu diperiksa sebelum dikirim</p></div></div>' +
+      '<div class="card-body"><div class="flow">' +
+      flowStep(1, 'Input data payroll', 'Halaman ini', 'current') +
+      flowStep(2, 'Kunci periode', 'Mencegah data berubah setelah slip dibuat', sh.locked ? 'done' : '') +
+      flowStep(3, 'Buat slip', 'Slip PDF dibuat untuk seluruh karyawan', sh.generated ? 'done' : '') +
+      flowStep(4, 'Periksa hasil', 'Pemeriksaan acak sebelum distribusi', '') +
+      flowStep(5, 'Kirim', 'Serahkan ke batch distribusi', '') +
+      '</div>' +
+      '<div class="btn-row" style="margin-top:18px">' +
+      '<a class="btn btn-sm btn-primary" href="#/generate">' + icon('file', 13) + 'Lanjut ke pembuatan slip</a>' +
+      '</div></div></div>';
+
+    return { html: html, mount: mountEntry };
+  }
+
+  function flowStep(n, title, note, state) {
+    return '<div class="flow-step ' + (state || '') + '">' +
+      '<i>' + (state === 'done' ? '✓' : n) + '</i>' +
+      '<div><b>' + esc(title) + '</b><span>' + esc(note) + '</span></div></div>';
+  }
+
+  function mountEntry() {
+    var sh = DB.entrySheets[entryPeriod];
+
+    var sel = q('#entPeriod');
+    if (sel) sel.addEventListener('change', function () {
+      entryPeriod = this.value; entryPage = 1; App.rerender();
+    });
+
+    var sb = q('#entSearch');
+    if (sb) sb.addEventListener('input', function () {
+      var caret = this.selectionStart;
+      entrySearch = this.value; entryPage = 1;
+      App.rerender();
+      var again = q('#entSearch');
+      if (again) { again.focus(); try { again.setSelectionRange(caret, caret); } catch (e) {} }
+    });
+
+    qa('[data-epage]').forEach(function (b) {
+      b.addEventListener('click', function () { entryPage = Number(this.dataset.epage); App.rerender(); });
+    });
+
+    /* Sel yang diketik memperbarui baris seketika, tanpa menggambar ulang
+       seluruh halaman — supaya fokus tidak lompat saat HR mengetik cepat. */
+    qa('.entry-table input[data-key]').forEach(function (inp) {
+      inp.addEventListener('input', function () {
+        var row = sh.rows.filter(function (r) { return r.code === this.dataset.code; }.bind(this))[0];
+        if (!row) return;
+        row.values[this.dataset.key] = Number(this.value) || 0;
+        var tr = this.closest('tr');
+        var t = DB.entryTotals(row);
+        q('[data-sum="bruto"]', tr).textContent = UI.rupiah(t.bruto);
+        q('[data-sum="potongan"]', tr).textContent = UI.rupiah(t.potongan);
+        var thp = q('[data-sum="thp"]', tr);
+        thp.textContent = UI.rupiah(t.thp);
+        thp.classList.toggle('neg', t.thp < 0);
+      });
+    });
+
+    var imp = q('#entImport');
+    if (imp) imp.addEventListener('click', function () {
+      UI.modal({
+        title: 'Impor dari berkas Excel',
+        sub: 'Periode ' + entryPeriod,
+        body: '<p style="font-size:13px">Sistem membaca berkas payroll dan memetakan kolomnya ke tabel ini ' +
+          'berdasarkan ID karyawan, bukan nama.</p>' +
+          '<div class="table-scroll" style="border:1px solid var(--line);border-radius:var(--r-sm)">' +
+          '<table class="data"><thead><tr><th>Kolom di Excel</th><th>Dipetakan ke</th></tr></thead><tbody>' +
+          DB.entryColumns.map(function (c) {
+            return '<tr><td class="col-code">' + esc(c.label.toUpperCase()) + '</td><td>' + esc(c.label) + '</td></tr>';
+          }).join('') + '</tbody></table></div>' +
+          '<div style="margin-top:14px">' +
+          UI.notice('n-warn', 'Berkas wajib memuat kolom ID karyawan',
+            'Tanpa kolom ID, pemetaan harus mengandalkan nama — dan nama bisa kembar atau salah ketik. ' +
+            'Sistem akan menolak berkas yang tidak punya kolom ID.') + '</div>',
+        confirm: 'Pilih berkas',
+        onConfirm: function (close) {
+          close();
+          UI.toast('Prototype tidak membaca berkas', 'Di sistem sungguhan berkas Excel akan diunggah dan dipetakan di sini.', 'info');
+        }
+      });
+    });
+
+    var auto = q('#entAuto');
+    if (auto) auto.addEventListener('click', function () {
+      UI.modal({
+        title: 'Hitung potongan otomatis',
+        sub: entryPeriod + ' · ' + sh.rows.length + ' karyawan',
+        body: '<p style="font-size:13px">Sistem akan mengisi kolom <b>JHT</b>, <b>BPJS Kesehatan</b>, dan <b>PPH 21</b> ' +
+          'berdasarkan tarif di halaman pengaturan. Kolom penghasilan tidak disentuh.</p>' +
+          '<p style="font-size:13px;color:var(--muted)">Nilai yang sudah Anda isi manual akan tertimpa. ' +
+          'Setelah terisi, setiap sel tetap bisa diubah satu per satu.</p>' +
+          UI.notice('n-warn', 'Hasilnya tetap harus diperiksa',
+            'Tarif yang dipakai masih berstatus belum diverifikasi. Selama itu, anggap hasil hitung ini ' +
+            'sebagai bantuan pengisian, bukan angka final.'),
+        confirm: 'Isi otomatis',
+        onConfirm: function (close) {
+          var r = DB.rates;
+          var base = r.bpjsBase === 'umk' ? r.umkWage : null;
+          sh.rows.forEach(function (row) {
+            var e = DB.byCode[row.code];
+            var upah = base !== null ? base
+              : (r.bpjsBase === 'pokok' ? row.values.pokok : row.values.pokok + row.values.tunjKehadiran);
+            row.values.jht = Math.round(upah * r.jhtEmployee / 100);
+            row.values.bpjsKes = Math.round(Math.min(upah, r.kesWageCap) * r.kesEmployee / 100);
+            var bruto = DB.entryTotals(row).bruto;
+            row.values.pph = e ? Math.round(bruto * terRateFor(e.ptkp, bruto)) : 0;
+          });
+          DB.audit.unshift({
+            ts: '2026-09-23 10:22', actor: App.user.name, role: App.user.role,
+            action: 'Potongan dihitung otomatis', object: entryPeriod, result: 'Berhasil',
+            desc: sh.rows.length + ' baris diisi ulang untuk JHT, BPJS Kesehatan, dan PPh 21'
+          });
+          close();
+          UI.toast('Potongan terisi', sh.rows.length + ' baris diperbarui.', 'ok');
+          App.rerender();
+        }
+      });
+    });
+
+    var lock = q('#entLock');
+    if (lock) lock.addEventListener('click', function () {
+      var blk = DB.sheetIssues(sh).filter(function (i) { return i.severity === 'BLOCKING'; });
+      if (blk.length) {
+        UI.modal({
+          title: 'Periode belum bisa dikunci',
+          body: UI.notice('n-bad', blk.length + ' baris masih bermasalah',
+            'Perbaiki dulu baris berikut sebelum periode dikunci:' +
+            blk.map(function (i) { return '<div style="margin-top:4px">' + esc(i.code + ' ' + i.name + ' — ' + i.message) + '</div>'; }).join('')),
+          cancel: 'Mengerti'
+        });
+        return;
+      }
+      UI.modal({
+        title: 'Kunci periode ' + entryPeriod,
+        body: '<p style="font-size:13px">Setelah dikunci, tabel tidak bisa diubah dan slip bisa mulai dibuat. ' +
+          'Kunci dapat dibuka lagi, tetapi setiap pembukaan tercatat di jejak audit.</p>' +
+          '<div class="defs" style="margin-top:14px">' +
+          '<div class="def"><span>Karyawan</span><b>' + sh.rows.length + '</b></div>' +
+          '<div class="def"><span>Total take home pay</span><b>' + UI.rupiah(DB.sheetTotals(sh).thp) + '</b></div>' +
+          '</div>',
+        confirm: 'Kunci periode',
+        onConfirm: function (close) {
+          sh.locked = true;
+          sh.lockedBy = App.user.name;
+          sh.lockedAt = '2026-09-23 10:30';
+          DB.audit.unshift({
+            ts: '2026-09-23 10:30', actor: App.user.name, role: App.user.role,
+            action: 'Periode payroll dikunci', object: entryPeriod, result: 'Berhasil',
+            desc: sh.rows.length + ' baris dikunci, total take home pay ' + UI.rupiah(DB.sheetTotals(sh).thp)
+          });
+          close();
+          UI.toast('Periode dikunci', 'Slip sekarang bisa dibuat.', 'ok');
+          App.go('#/generate');
+        }
+      });
+    });
+
+    var unlock = q('#entUnlock');
+    if (unlock) unlock.addEventListener('click', function () {
+      UI.modal({
+        title: 'Buka kunci periode ' + entryPeriod,
+        body: UI.notice('n-warn', 'Slip yang sudah dibuat akan dianggap kedaluwarsa',
+          'Kalau data diubah setelah slip dibuat, slip lama tidak lagi cocok dengan datanya. ' +
+          'Sistem akan meminta slip dibuat ulang sebelum distribusi bisa dijalankan.'),
+        confirm: 'Buka kunci',
+        danger: true,
+        onConfirm: function (close) {
+          sh.locked = false; sh.generated = false;
+          DB.audit.unshift({
+            ts: '2026-09-23 10:34', actor: App.user.name, role: App.user.role,
+            action: 'Kunci periode dibuka', object: entryPeriod, result: 'Berhasil',
+            desc: 'Slip yang sudah dibuat ditandai kedaluwarsa dan harus dibuat ulang'
+          });
+          close();
+          UI.toast('Kunci dibuka', 'Slip perlu dibuat ulang setelah data diubah.', 'info');
+          App.rerender();
+        }
+      });
+    });
+  }
+
+  function terRateFor(ptkp, bruto) {
+    var cat = DB.terCategory(ptkp);
+    var tbl = DB.terTable[cat];
+    for (var i = 0; i < tbl.length; i++) if (bruto <= tbl[i][0]) return tbl[i][1];
+    return tbl[tbl.length - 1][1];
+  }
+
+  /* =======================================================================
      12 · DATA GAJI & PERHITUNGAN
      ======================================================================= */
   function payrolldata() {
@@ -1972,6 +2721,8 @@ var PAGES = (function () {
     dashboard: dashboard,
     employees: employees,
     payrolldata: payrolldata,
+    entry: entry,
+    generate: generate,
     batches: batches,
     matching: matching,
     validation: validation,
