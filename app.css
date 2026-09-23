@@ -1732,3 +1732,67 @@ table.otslip-table tr.otslip-total td:nth-child(2) { text-align: center; }
   .otslip-page:last-child { break-after: auto; }
   @page { size: landscape; }
 }
+
+/* Kotak keterangan yang bisa disembunyikan */
+.notice-box { align-items: flex-start; }
+.notice-box .nb-main { flex: 1; min-width: 0; }
+.notice-box .nb-head {
+  display: flex; align-items: center; gap: 9px;
+  flex-wrap: wrap;
+}
+.notice-box .nb-head b { margin: 0; }
+.nb-count {
+  font-size: 11px; font-weight: 500;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, .6);
+  border: 1px solid currentColor;
+  opacity: .7;
+}
+.nb-toggle {
+  margin-left: auto;
+  font: inherit; font-size: 11.5px; font-weight: 500;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid currentColor;
+  background: rgba(255, 255, 255, .55);
+  color: inherit;
+  cursor: pointer;
+  opacity: .82;
+}
+.nb-toggle:hover { opacity: 1; background: #fff; }
+.notice-box .nb-body { margin-top: 5px; }
+.notice-box.collapsed .nb-body { display: none; }
+.notice-box.collapsed { padding-top: 10px; padding-bottom: 10px; }
+.nb-item { margin-top: 4px; line-height: 1.55; }
+.nb-item b { display: inline; margin: 0; }
+
+/* Penanda jenis dokumen */
+.doc-tag {
+  display: inline-block;
+  font-size: 10.5px; font-weight: 600;
+  padding: 2px 9px;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.doc-tag.d-pay { background: var(--petrol-050); color: var(--petrol-700); border-color: var(--petrol-100); }
+.doc-tag.d-ot { background: #f2ecfa; color: #5b3d8c; border-color: #d9cbee; }
+
+.doc-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.doc-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+  box-shadow: var(--sh-1);
+}
+.doc-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.doc-card-head b {
+  margin-left: auto;
+  font-size: 20px; font-weight: 600;
+  letter-spacing: -.025em;
+  font-variant-numeric: tabular-nums;
+}
+.doc-card-foot { margin-top: 9px; font-size: 11.5px; color: var(--muted); }
+@media (max-width: 900px) { .doc-split { grid-template-columns: minmax(0, 1fr); } }
