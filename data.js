@@ -183,6 +183,14 @@ var DB = (function () {
     /* BPJS Kesehatan */
     kesEmployee: 1.0, kesEmployer: 4.0, kesWageCap: 12000000,
 
+    /* Dasar perhitungan iuran BPJS.
+       'umk'  — upah minimum tetap untuk semua karyawan
+       'pokok' — gaji pokok masing-masing
+       'pokok_tunjangan' — gaji pokok ditambah tunjangan kehadiran
+       Slip yang berlaku di perusahaan ini memakai 'umk'. */
+    bpjsBase: 'umk',
+    umkWage: 3512866,
+
     /* Lembur — pembagi jam kerja sebulan dan pengali upah lembur */
     overtimeDivisor: 173,
     overtimeMultiplier: 1.75,
@@ -238,7 +246,9 @@ var DB = (function () {
     var lembur = Math.round((overtimeHours || 0) * hourly * r.overtimeMultiplier);
 
     var bruto = p.pokok + p.tunjKehadiran + p.tunjSkill + lembur;
-    var upahDasar = p.pokok + p.tunjKehadiran;
+    var upahDasar = r.bpjsBase === 'umk' ? r.umkWage
+      : r.bpjsBase === 'pokok' ? p.pokok
+        : p.pokok + p.tunjKehadiran;
 
     var jht = Math.round(upahDasar * r.jhtEmployee / 100);
     var jp = Math.round(Math.min(upahDasar, r.jpWageCap) * r.jpEmployee / 100);
@@ -755,6 +765,130 @@ var DB = (function () {
     return DIVISIONS.map(function (d) { return map[d.key]; });
   }
 
+  /* ------------------------------------------------ entri payroll --- */
+  /* Kolom mengikuti persis tabel yang dipakai HR di berkas Excel, dengan
+     urutan tampilan mengikuti tata letak slip. Sengaja tidak disederhanakan
+     supaya HR tidak perlu mengubah kebiasaan input. */
+  var entryColumns = [
+    { key: 'pokok', label: 'Gaji Pokok', group: 'in', w: 118 },
+    { key: 'lembur', label: 'Lembur', group: 'in', w: 110 },
+    { key: 'tunjKehadiran', label: 'Tunj. Kehadiran', group: 'in', w: 118 },
+    { key: 'tunjSkill', label: 'Tunj. Skill', group: 'in', w: 106 },
+    { key: 'rapelAbsen', label: 'Rapel Absen', group: 'in', w: 106 },
+    { key: 'rapelLembur', label: 'Rapel Lembur', group: 'in', w: 110 },
+    { key: 'rapelTunj', label: 'Rapel Tunj. Kehadiran', group: 'in', w: 128 },
+    { key: 'kompensasi', label: 'Kompensasi', group: 'in', w: 106 },
+    { key: 'jht', label: 'JHT', group: 'out', w: 100 },
+    { key: 'bpjsKes', label: 'BPJS Kesehatan', group: 'out', w: 116 },
+    { key: 'absen', label: 'Absen + IP', group: 'out', w: 100 },
+    { key: 'pph', label: 'PPH 21', group: 'out', w: 100 }
+  ];
+
+  function blankValues() {
+    var v = {};
+    entryColumns.forEach(function (c) { v[c.key] = 0; });
+    return v;
+  }
+
+  function entryTotals(row) {
+    var bruto = 0, potongan = 0;
+    entryColumns.forEach(function (c) {
+      var n = Number(row.values[c.key]) || 0;
+      if (c.group === 'in') bruto += n; else potongan += n;
+    });
+    return { bruto: bruto, potongan: potongan, thp: bruto - potongan };
+  }
+
+  /* Satu lembar entri per periode. Periode lama sudah terkunci; periode
+     berjalan masih bisa diubah HR. */
+  var entrySheets = {};
+
+  function buildSheet(periodCode, factor, locked) {
+    var rows = employees.map(function (e, i) {
+      var pay = payByCode[e.code];
+      var c = pay.calc;
+      var v = blankValues();
+      v.pokok = Math.round(c.pokok * factor / 1000) * 1000;
+      v.lembur = Math.round(c.lembur * factor / 100) * 100;
+      v.tunjKehadiran = c.tunjKehadiran;
+      v.tunjSkill = c.tunjSkill;
+      v.jht = c.jht;
+      v.bpjsKes = c.kes;
+      v.pph = c.pph;
+      /* Sebagian kecil punya rapel atau potongan absen — kondisi nyata */
+      if (i % 31 === 4) v.rapelLembur = Math.round(c.lembur * .18 / 100) * 100;
+      if (i % 43 === 7) v.rapelAbsen = 120000;
+      if (i % 37 === 11) v.absen = Math.round(c.pokok * .04 / 100) * 100;
+      if (i % 59 === 19) v.kompensasi = 500000;
+      return { code: e.code, name: e.name, position: e.position, values: v };
+    });
+    entrySheets[periodCode] = {
+      period: periodCode,
+      locked: !!locked,
+      lockedBy: locked ? 'Rahayu Pertiwi' : null,
+      lockedAt: locked ? '2026-09-22 07:58' : null,
+      generated: !!locked,
+      generatedAt: locked ? '2026-09-22 08:03' : null,
+      rows: rows
+    };
+  }
+
+  buildSheet('JUL-2026', .94, true);
+  buildSheet('AGU-2026', .97, true);
+  buildSheet('SEP-2026', 1, true);
+  buildSheet('OKT-2026', 1.03, false);
+
+  /* Empat baris di periode berjalan sengaja dibuat bermasalah supaya
+     pemeriksaan sebelum generate ada isinya saat demo. */
+  function DB_entryBruto(row) { return entryTotals(row).bruto; }
+
+  (function seedIssues() {
+    var sh = entrySheets['OKT-2026'];
+    sh.rows[12].values.pokok = 0;
+    sh.rows[64].values.absen = DB_entryBruto(sh.rows[64]) + 850000;
+    sh.rows[138].values.jht = 0;
+    sh.rows[201].values.lembur = 48000000;
+  })();
+
+  function sheetIssues(sheet) {
+    var out = [];
+    sheet.rows.forEach(function (row) {
+      var t = entryTotals(row);
+      var e = byCode[row.code];
+      if (!row.values.pokok) {
+        out.push({ code: row.code, name: row.name, severity: 'BLOCKING',
+          message: 'Gaji pokok kosong — slip tidak bisa dicetak tanpa nilai ini' });
+      }
+      if (t.thp < 0) {
+        out.push({ code: row.code, name: row.name, severity: 'BLOCKING',
+          message: 'Take home pay minus ' + Math.abs(t.thp).toLocaleString('id-ID') + ' — potongan melebihi penghasilan' });
+      }
+      if (row.values.pokok && !row.values.jht) {
+        out.push({ code: row.code, name: row.name, severity: 'WARNING',
+          message: 'Potongan JHT kosong padahal ada gaji pokok' });
+      }
+      if (row.values.lembur > row.values.pokok * 4 && row.values.pokok) {
+        out.push({ code: row.code, name: row.name, severity: 'WARNING',
+          message: 'Lembur ' + Math.round(row.values.lembur / row.values.pokok) +
+            '× gaji pokok — periksa apakah ada salah ketik' });
+      }
+      if (e && !e.email) {
+        out.push({ code: row.code, name: row.name, severity: 'INFO',
+          message: 'Tidak punya email — slip dicetak dan diserahkan langsung' });
+      }
+    });
+    return out;
+  }
+
+  function sheetTotals(sheet) {
+    var t = { bruto: 0, potongan: 0, thp: 0, rows: sheet.rows.length };
+    sheet.rows.forEach(function (r) {
+      var x = entryTotals(r);
+      t.bruto += x.bruto; t.potongan += x.potongan; t.thp += x.thp;
+    });
+    return t;
+  }
+
   /* -------------------------------------------------------- demografi -- */
   function demographics(list) {
     list = list || employees;
@@ -850,6 +984,14 @@ var DB = (function () {
     payrollTotals: payrollTotals,
     periodTotals: periodTotals,
     demographics: demographics,
-    addEmployee: addEmployee
+    addEmployee: addEmployee,
+
+    entryColumns: entryColumns,
+    entrySheets: entrySheets,
+    entryTotals: entryTotals,
+    sheetIssues: sheetIssues,
+    sheetTotals: sheetTotals,
+
+    signer: { name: 'Evanora Radja', title: 'Finance PT. BTB', place: 'Wayafli' }
   };
 })();
