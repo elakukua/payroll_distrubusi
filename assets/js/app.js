@@ -58,7 +58,7 @@ var App = (function () {
 
   function counts() {
     return {
-      failed: DB.deliveries.filter(function (r) { return r.status === 'FAILED'; }).length,
+      failed: DB.allDeliveries().filter(function (r) { return r.status === 'FAILED'; }).length,
       blocking: 0
     };
   }
@@ -104,11 +104,11 @@ var App = (function () {
 
   /* ----------------------------------------------------------- topbar -- */
   function renderTopbar(route) {
-    var s = DB.summarise(DB.deliveries);
+    var s = DB.summarise(DB.allDeliveries());
     q('#topbar').innerHTML =
       '<h1>' + esc(route.title) + '</h1>' +
       '<span class="demo-flag"><i></i>Data contoh</span>' +
-      '<div class="topbar-context">' +
+      '<div class="topbar-context' + (route.path === 'dashboard' ? ' control-context-hidden' : '') + '">' +
       '<div class="ctx-item"><span>Periode berjalan</span><b>September 2026</b></div>' +
       '<div class="ctx-item"><span>Siklus</span><b>21 Agu – 20 Sep</b></div>' +
       '<div class="ctx-item"><span>Tingkat keberhasilan</span><b>' + UI.pct(s.rate) + '%</b></div>' +
