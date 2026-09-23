@@ -1756,6 +1756,70 @@ table.otslip-table tr.otslip-total td:nth-child(2) { text-align: center; }
   @page { size: landscape; }
 }
 
+/* Kotak keterangan yang bisa disembunyikan */
+.notice-box { align-items: flex-start; }
+.notice-box .nb-main { flex: 1; min-width: 0; }
+.notice-box .nb-head {
+  display: flex; align-items: center; gap: 9px;
+  flex-wrap: wrap;
+}
+.notice-box .nb-head b { margin: 0; }
+.nb-count {
+  font-size: 11px; font-weight: 500;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, .6);
+  border: 1px solid currentColor;
+  opacity: .7;
+}
+.nb-toggle {
+  margin-left: auto;
+  font: inherit; font-size: 11.5px; font-weight: 500;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid currentColor;
+  background: rgba(255, 255, 255, .55);
+  color: inherit;
+  cursor: pointer;
+  opacity: .82;
+}
+.nb-toggle:hover { opacity: 1; background: #fff; }
+.notice-box .nb-body { margin-top: 5px; }
+.notice-box.collapsed .nb-body { display: none; }
+.notice-box.collapsed { padding-top: 10px; padding-bottom: 10px; }
+.nb-item { margin-top: 4px; line-height: 1.55; }
+.nb-item b { display: inline; margin: 0; }
+
+/* Penanda jenis dokumen */
+.doc-tag {
+  display: inline-block;
+  font-size: 10.5px; font-weight: 600;
+  padding: 2px 9px;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.doc-tag.d-pay { background: var(--petrol-050); color: var(--petrol-700); border-color: var(--petrol-100); }
+.doc-tag.d-ot { background: #f2ecfa; color: #5b3d8c; border-color: #d9cbee; }
+
+.doc-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.doc-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+  box-shadow: var(--sh-1);
+}
+.doc-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.doc-card-head b {
+  margin-left: auto;
+  font-size: 20px; font-weight: 600;
+  letter-spacing: -.025em;
+  font-variant-numeric: tabular-nums;
+}
+.doc-card-foot { margin-top: 9px; font-size: 11.5px; color: var(--muted); }
+@media (max-width: 900px) { .doc-split { grid-template-columns: minmax(0, 1fr); } }
+
 </style>
 </head>
 <body>
@@ -2193,7 +2257,7 @@ var DB = (function () {
 
       if (!emp.email) {
         rows.push({
-          batchId: batchId, code: emp.code, docType: docType,
+          batchId: batchId, code: emp.code, docType: docType, period: period,
           email: null, payslipStatus: 'READY', emailStatus: 'NO_ADDRESS',
           status: 'EXCEPTION', sentAt: null, retryCount: 0,
           lastAttempt: null, errorCode: null, messageId: null
@@ -2212,7 +2276,7 @@ var DB = (function () {
       var stamp = pad(hh, 2) + ':' + pad(mm, 2);
 
       var row = {
-        batchId: batchId, code: emp.code, docType: docType,
+        batchId: batchId, code: emp.code, docType: docType, period: period,
         email: emp.email,
         payslipStatus: 'READY',
         emailStatus: 'ACCEPTED',
@@ -3016,6 +3080,71 @@ var DB = (function () {
   buildOtSheet('AGU-2026', true);
   buildOtSheet('SEP-2026', false);
 
+  /* Pengiriman slip lembur — batch Agustus yang sudah dijalankan.
+     Dibuat dari daftar karyawan yang benar-benar punya catatan lembur,
+     bukan dari seluruh karyawan, karena tidak semua orang lembur. */
+  var otDeliveries = [];
+  (function buildOtDeliveries() {
+    var sh = otSheets['AGU-2026'];
+    if (!sh) return;
+    var people = otByEmployee(sh);
+    var clock = 10 * 60 + 2;
+    people.forEach(function (p, i) {
+      var emp = byCode[p.code];
+      if (!emp) return;
+      if (!emp.email) {
+        otDeliveries.push({
+          batchId: 'OT-AGU-2026', code: p.code, docType: 'OVERTIME', period: 'AGU-2026',
+          email: null, payslipStatus: 'READY', emailStatus: 'NO_ADDRESS',
+          status: 'EXCEPTION', sentAt: null, retryCount: 0, lastAttempt: null,
+          errorCode: null, messageId: null
+        });
+        return;
+      }
+      clock += 1 + (i % 3);
+      var stamp = pad(Math.floor(clock / 60), 2) + ':' + pad(clock % 60, 2);
+      var bad = (i % 67 === 23);
+      otDeliveries.push({
+        batchId: 'OT-AGU-2026', code: p.code, docType: 'OVERTIME', period: 'AGU-2026',
+        email: emp.email,
+        payslipStatus: 'READY',
+        emailStatus: bad ? 'BOUNCED' : 'ACCEPTED',
+        status: bad ? 'FAILED' : 'SENT',
+        sentDate: '2026-08-26',
+        sentAt: bad ? null : stamp,
+        retryCount: bad ? 2 : 0,
+        lastAttempt: '2026-08-26 ' + stamp,
+        errorCode: bad ? 'MAILBOX_FULL' : null,
+        messageId: bad ? null : '<ot-agu-2026.' + p.code.toLowerCase() + '@' + DOMAIN + '>'
+      });
+    });
+  })();
+
+  function allDeliveries() { return deliveries.concat(otDeliveries); }
+
+  /* Dipakai saat distribusi dijalankan di layar demo, supaya hasilnya
+     langsung muncul di halaman pelacakan. */
+  function recordDistribution(batch, results) {
+    results.forEach(function (r) {
+      var emp = byCode[r.code];
+      var rec = {
+        batchId: batch.id, code: r.code, docType: batch.docType, period: batch.period,
+        email: emp ? emp.email : null,
+        payslipStatus: 'READY',
+        emailStatus: r.ok ? 'ACCEPTED' : 'BOUNCED',
+        status: r.ok ? 'SENT' : 'FAILED',
+        sentDate: batch.date, sentAt: r.ok ? r.at : null,
+        retryCount: r.ok ? 0 : 1,
+        lastAttempt: batch.date + ' ' + r.at,
+        errorCode: r.ok ? null : 'MAILBOX_FULL',
+        messageId: r.ok ? '<' + batch.id.toLowerCase() + '.' + r.code.toLowerCase() + '@' + DOMAIN + '>' : null
+      };
+      if (batch.docType === 'OVERTIME') otDeliveries.push(rec);
+      else deliveries.push(rec);
+    });
+  }
+
+
   /* Empat baris contoh yang bermasalah supaya pemeriksaan ada isinya */
   (function seedOtIssues() {
     var sh = otSheets['SEP-2026'];
@@ -3231,6 +3360,9 @@ var DB = (function () {
     periods: periods,
     batches: batches,
     deliveries: deliveries,
+    otDeliveries: otDeliveries,
+    allDeliveries: allDeliveries,
+    recordDistribution: recordDistribution,
     history: history,
     overtime: overtime,
     otByCode: otByCode,
@@ -3677,6 +3809,37 @@ var UI = (function () {
       (foot ? '<div class="kpi-foot">' + foot + '</div>' : '') + '</div>';
   }
 
+  /* Kotak keterangan yang bisa disembunyikan.
+     Daftar temuan bisa panjang dan menutupi tabel, jadi setiap kotak punya
+     tombol sembunyikan. Keadaannya diingat lewat kunci, sehingga pilihan
+     pengguna bertahan saat halaman digambar ulang. */
+  var noticeHidden = {};
+
+  function noticeBox(key, kind, title, body, countLabel) {
+    var hidden = !!noticeHidden[key];
+    var ico = kind === 'n-ok' ? 'check' : (kind === 'n-info' ? 'bang' : 'alert');
+    return '<div class="notice notice-box ' + kind + (hidden ? ' collapsed' : '') + '" data-nbox="' + esc(key) + '">' +
+      icon(ico, 16) +
+      '<div class="nb-main">' +
+      '<div class="nb-head"><b>' + esc(title) + '</b>' +
+      (countLabel ? '<span class="nb-count">' + esc(countLabel) + '</span>' : '') +
+      '<button class="nb-toggle" type="button" data-nb="' + esc(key) + '">' +
+      (hidden ? 'Tampilkan' : 'Sembunyikan') + '</button></div>' +
+      '<div class="nb-body">' + body + '</div>' +
+      '</div></div>';
+  }
+
+  function wireNoticeBoxes(root) {
+    qa('[data-nb]', root).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var box = this.closest('.notice-box');
+        var hidden = box.classList.toggle('collapsed');
+        noticeHidden[this.dataset.nb] = hidden;
+        this.textContent = hidden ? 'Tampilkan' : 'Sembunyikan';
+      });
+    });
+  }
+
   function notice(kind, title, body) {
     var ico = kind === 'n-ok' ? 'check' : (kind === 'n-info' ? 'bang' : 'alert');
     return '<div class="notice ' + kind + '">' + icon(ico, 16) +
@@ -3688,7 +3851,8 @@ var UI = (function () {
     rupiah: rupiah, rupiahShort: rupiahShort,
     badge: badge, STATUS: STATUS, toast: toast, modal: modal, drawer: drawer,
     dataTable: dataTable, board: board, segbar: segbar, kpi: kpi,
-    notice: notice, initials: initials, dateID: dateID
+    notice: notice, noticeBox: noticeBox, wireNoticeBoxes: wireNoticeBoxes,
+    noticeHidden: noticeHidden, initials: initials, dateID: dateID
   };
 })();
 
@@ -3784,6 +3948,35 @@ var PAGES = (function () {
       (b ? '<span class="chip">' + esc(b.id) + '</span>' : '') +
       '</div></div>';
 
+    /* Ringkasan dua jenis dokumen periode ini */
+    var otSh = DB.otSheets[dashPeriod];
+    var otT = otSh ? DB.otSheetTotals(otSh) : { rows: 0, people: 0, hours: 0, amount: 0, overCap: 0 };
+    var payDel = DB.deliveries.filter(function (r) { return r.period === dashPeriod; });
+    var otDel = DB.otDeliveries.filter(function (r) { return r.period === dashPeriod; });
+    var payDS = DB.summarise(payDel), otDS = DB.summarise(otDel);
+
+    html += '<div class="doc-split" style="margin-bottom:16px">' +
+      '<div class="doc-card d-pay"><div class="doc-card-head"><span class="doc-tag d-pay">Slip gaji</span>' +
+      '<b>' + (payDel.length ? num(payDS.delivered) + '/' + num(payDS.processed) : '—') + '</b></div>' +
+      (payDel.length ? UI.segbar(payDS)
+        : '<div class="segbar"><span class="seg-queued" style="width:100%"></span></div>') +
+      '<div class="doc-card-foot">' +
+      (payDel.length
+        ? UI.pct(payDS.rate) + '% terkirim · ' + num(payDS.failed) + ' gagal · nilai ' + UI.rupiahShort(money.bruto)
+        : 'Belum didistribusikan · nilai ' + UI.rupiahShort(money.bruto)) +
+      '</div></div>' +
+
+      '<div class="doc-card d-ot"><div class="doc-card-head"><span class="doc-tag d-ot">Slip lembur</span>' +
+      '<b>' + (otDel.length ? num(otDS.delivered) + '/' + num(otDS.processed) : num(otT.people)) + '</b></div>' +
+      (otDel.length ? UI.segbar(otDS)
+        : '<div class="segbar"><span class="seg-queued" style="width:100%"></span></div>') +
+      '<div class="doc-card-foot">' +
+      (otDel.length
+        ? UI.pct(otDS.rate) + '% terkirim · ' + num(otDS.failed) + ' gagal · ' + otT.hours.toFixed(0) + ' jam'
+        : num(otT.rows) + ' baris · ' + otT.hours.toFixed(0) + ' jam · belum didistribusikan') +
+      '</div></div>' +
+      '</div>';
+
     /* Nilai payroll */
     html += '<div class="grid g-4" style="margin-bottom:16px">' +
       UI.kpi('Nilai payroll periode ini', UI.rupiahShort(money.bruto),
@@ -3794,6 +3987,19 @@ var PAGES = (function () {
         'Disetor perusahaan', '') +
       UI.kpi('BPJS dipotong karyawan', UI.rupiahShort(money.bpjsEmployee),
         'Perusahaan menanggung <b>' + UI.rupiahShort(money.bpjsEmployer) + '</b>', '') +
+      '</div>';
+
+    /* Lembur periode ini */
+    html += '<div class="grid g-4" style="margin-bottom:16px">' +
+      UI.kpi('Karyawan lembur', num(otT.people),
+        'Dari ' + num(DB.employees.length) + ' karyawan aktif', '') +
+      UI.kpi('Total jam lembur', otT.hours.toFixed(0),
+        num(otT.rows) + ' baris di 5 lembar divisi', '') +
+      UI.kpi('Perkiraan upah lembur', UI.rupiahShort(otT.amount),
+        'Sudah termasuk di nilai payroll', '') +
+      UI.kpi('Lewat ambang ' + DB.otCap + ' jam', num(otT.overCap),
+        otT.overCap ? 'Perlu ditinjau HR' : 'Tidak ada yang lewat',
+        otT.overCap ? 'warn' : 'good') +
       '</div>';
 
     if (!can('salaryDetail')) {
@@ -3816,7 +4022,7 @@ var PAGES = (function () {
     /* Papan sel */
     html += '<div class="card" style="margin-bottom:16px">' +
       '<div class="card-head">' +
-      '<div><h3>Papan distribusi · ' + esc(period.label) + '</h3>' +
+      '<div><h3>Papan distribusi slip gaji · ' + esc(period.label) + '</h3>' +
       '<p>Satu kotak mewakili satu karyawan. Arahkan kursor untuk melihat nama dan statusnya.</p></div>' +
       '<div class="spacer"></div>' +
       '<div style="text-align:right"><div style="font-size:24px;font-weight:600;letter-spacing:-.028em;line-height:1.1">' +
@@ -3901,6 +4107,7 @@ var PAGES = (function () {
       html: html,
       mount: function () {
         wireBoard();
+        UI.wireNoticeBoxes();
         var sel = q('#periodSel');
         if (sel) sel.addEventListener('change', function () {
           dashPeriod = this.value;
@@ -4806,6 +5013,7 @@ var PAGES = (function () {
   }
 
   function mountGenerate() {
+    UI.wireNoticeBoxes();
     var sh = DB.entrySheets[entryPeriod];
 
     var sel = q('#genPeriod');
@@ -5121,20 +5329,18 @@ var PAGES = (function () {
       '</div>';
 
     if (blocking.length) {
-      html += '<div style="margin-bottom:16px">' + UI.notice('n-bad',
-        blocking.length + ' baris menghalangi pembuatan slip',
+      html += '<div style="margin-bottom:16px">' + UI.noticeBox('pay-blk-' + entryPeriod, 'n-bad',
+        'Baris yang menghalangi pembuatan slip', 
         blocking.map(function (i) {
-          return '<div style="margin-top:4px"><b style="display:inline">' + esc(i.code) + ' ' + esc(i.name) +
-            '</b> — ' + esc(i.message) + '</div>';
-        }).join('')) + '</div>';
+          return '<div class="nb-item"><b>' + esc(i.code) + ' ' + esc(i.name) + '</b> — ' + esc(i.message) + '</div>';
+        }).join(''), blocking.length + ' baris') + '</div>';
     }
     if (warnings.length) {
-      html += '<div style="margin-bottom:16px">' + UI.notice('n-warn',
-        warnings.length + ' baris perlu diperiksa, tetapi tidak menghalangi',
+      html += '<div style="margin-bottom:16px">' + UI.noticeBox('pay-wrn-' + entryPeriod, 'n-warn',
+        'Perlu diperiksa, tetapi tidak menghalangi',
         warnings.map(function (i) {
-          return '<div style="margin-top:4px"><b style="display:inline">' + esc(i.code) + ' ' + esc(i.name) +
-            '</b> — ' + esc(i.message) + '</div>';
-        }).join('')) + '</div>';
+          return '<div class="nb-item"><b>' + esc(i.code) + ' ' + esc(i.name) + '</b> — ' + esc(i.message) + '</div>';
+        }).join(''), warnings.length + ' baris') + '</div>';
     }
 
     /* Tabel entri */
@@ -5237,6 +5443,7 @@ var PAGES = (function () {
   }
 
   function mountEntry() {
+    UI.wireNoticeBoxes();
     var sh = DB.entrySheets[entryPeriod];
 
     var sel = q('#entPeriod');
@@ -5472,19 +5679,29 @@ var PAGES = (function () {
           '</button>';
       }).join('') + '</div>';
 
+    if (sh.createdFrom) {
+      html += '<div style="margin-bottom:16px">' + UI.noticeBox('ot-src-' + otPeriod, 'n-info',
+        'Periode ini disalin dari ' + esc(sh.createdFrom),
+        'Seluruh baris dari periode sebelumnya disalin dan tanggalnya digeser otomatis ke rentang periode baru. ' +
+        'Jam dan uraian pekerjaan ikut tersalin apa adanya — <b>wajib diperiksa</b>, karena lembur bulan lalu ' +
+        'hampir tidak pernah sama dengan bulan ini.', 'perlu diperiksa') + '</div>';
+    }
+
     if (blocking.length) {
-      html += '<div style="margin-bottom:16px">' + UI.notice('n-bad',
-        blocking.length + ' baris menghalangi pembuatan slip di lembar ini',
-        blocking.slice(0, 6).map(function (i) {
-          return '<div style="margin-top:4px"><b style="display:inline">' + esc(i.who) + '</b> — ' + esc(i.message) + '</div>';
-        }).join('') + (blocking.length > 6 ? '<div style="margin-top:4px">dan ' + (blocking.length - 6) + ' lainnya</div>' : '')) + '</div>';
+      html += '<div style="margin-bottom:16px">' + UI.noticeBox('ot-blk-' + otPeriod + otSheetKey, 'n-bad',
+        'Baris yang menghalangi pembuatan slip di lembar ' + sheetLabel(otSheetKey),
+        blocking.slice(0, 10).map(function (i) {
+          return '<div class="nb-item"><b>' + esc(i.who) + '</b> — ' + esc(i.message) + '</div>';
+        }).join('') + (blocking.length > 10 ? '<div class="nb-item">dan ' + (blocking.length - 10) + ' lainnya</div>' : ''),
+        blocking.length + ' baris') + '</div>';
     }
     if (warnings.length) {
-      html += '<div style="margin-bottom:16px">' + UI.notice('n-warn',
-        warnings.length + ' hal perlu diperiksa, tetapi tidak menghalangi',
-        warnings.slice(0, 5).map(function (i) {
-          return '<div style="margin-top:4px"><b style="display:inline">' + esc(i.who) + '</b> — ' + esc(i.message) + '</div>';
-        }).join('') + (warnings.length > 5 ? '<div style="margin-top:4px">dan ' + (warnings.length - 5) + ' lainnya</div>' : '')) + '</div>';
+      html += '<div style="margin-bottom:16px">' + UI.noticeBox('ot-wrn-' + otPeriod + otSheetKey, 'n-warn',
+        'Perlu diperiksa, tetapi tidak menghalangi',
+        warnings.slice(0, 10).map(function (i) {
+          return '<div class="nb-item"><b>' + esc(i.who) + '</b> — ' + esc(i.message) + '</div>';
+        }).join('') + (warnings.length > 10 ? '<div class="nb-item">dan ' + (warnings.length - 10) + ' lainnya</div>' : ''),
+        warnings.length + ' hal') + '</div>';
     }
 
     /* Tabel */
@@ -5492,6 +5709,7 @@ var PAGES = (function () {
       '<div class="search-field">' + icon('search', 14) +
       '<input type="search" id="otSearch" placeholder="Cari nama, ID, atau uraian pekerjaan…" value="' + esc(otSearch) + '"></div>' +
       '<div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">' +
+      '<button class="btn btn-sm" id="otNewPeriod">' + icon('layers', 13) + 'Buka periode baru</button>' +
       '<button class="btn btn-sm" id="otRecap">' + icon('people', 13) + 'Rekap per karyawan</button>' +
       (sh.locked
         ? '<button class="btn btn-sm" id="otUnlock">' + icon('lock', 13) + 'Buka kunci untuk diedit</button>'
@@ -5571,6 +5789,7 @@ var PAGES = (function () {
   }
 
   function mountOtEntry() {
+    UI.wireNoticeBoxes();
     var sh = DB.otSheets[otPeriod];
     var byId = {};
     sh.entries.forEach(function (e) { byId[e.id] = e; });
@@ -5662,6 +5881,9 @@ var PAGES = (function () {
 
     var imp = q('#otImport');
     if (imp) imp.addEventListener('click', function () { otImportForm(otPeriod); });
+
+    var onp = q('#otNewPeriod');
+    if (onp) onp.addEventListener('click', otNewPeriodForm);
 
     var lock = q('#otLock');
     if (lock) lock.addEventListener('click', function () { otLock(sh); });
@@ -5799,6 +6021,91 @@ var PAGES = (function () {
     });
   }
 
+  function otNewPeriodForm() {
+    var next = DB.nextPeriod();
+    var exists = DB.periods.filter(function (p) { return !!DB.otSheets[p.code]; }).map(function (p) { return p.code; });
+    var candidates = DB.periods.filter(function (p) { return !DB.otSheets[p.code]; });
+    if (!candidates.length) candidates = [next];
+    var sources = DB.periods.filter(function (p) { return !!DB.otSheets[p.code]; }).reverse();
+
+    UI.modal({
+      title: 'Buka periode lembur baru',
+      sub: 'Menyiapkan lima lembar divisi sekaligus',
+      wide: true,
+      body:
+        '<div class="form-grid">' +
+        '<div class="field"><label>Periode</label><select id="onpCode">' +
+        candidates.map(function (p, i) {
+          return '<option value="' + p.code + '|' + esc(p.label) + '"' + (i === 0 ? ' selected' : '') + '>' +
+            esc(p.label) + ' · ' + esc(p.range) + '</option>';
+        }).join('') +
+        (DB.otSheets[next.code] ? '' :
+          '<option value="' + next.code + '|' + esc(next.label) + '">' + esc(next.label) + ' · ' + esc(next.range) + '</option>') +
+        '</select></div>' +
+        '<div class="field"><label>Salin dari periode</label><select id="onpSrc">' +
+        sources.map(function (p, i) {
+          return '<option value="' + p.code + '"' + (i === 0 ? ' selected' : '') + '>' + esc(p.label) + '</option>';
+        }).join('') + '</select></div>' +
+        '</div>' +
+
+        '<h4 class="form-sep">Cara penyiapan data</h4>' +
+        '<div class="opt-list">' +
+
+        '<label class="opt"><input type="radio" name="onpMode" value="blank" checked>' +
+        '<div><b>Mulai kosong</b>' +
+        '<span>Kelima lembar dibuka tanpa baris sama sekali. Baris ditambahkan lewat impor Excel ' +
+        'atau diketik satu per satu.</span>' +
+        '<em>Disarankan — lembur tiap bulan berbeda, jadi mulai bersih lebih aman</em></div></label>' +
+
+        '<label class="opt"><input type="radio" name="onpMode" value="import">' +
+        '<div><b>Mulai kosong lalu langsung impor</b>' +
+        '<span>Periode dibuka kosong dan jendela impor terbuka seketika, ' +
+        'supaya seluruh lembar bisa diisi dari satu berkas Excel.</span>' +
+        '<em>Paling cepat kalau pencatatan lembur masih dikerjakan di Excel</em></div></label>' +
+
+        '<label class="opt"><input type="radio" name="onpMode" value="copy">' +
+        '<div><b>Salin dari periode sebelumnya</b>' +
+        '<span>Seluruh baris disalin dan tanggalnya digeser otomatis ke rentang periode baru. ' +
+        'Jam dan uraian pekerjaan ikut tersalin.</span>' +
+        '<em>Hati-hati — hasilnya wajib diperiksa baris per baris sebelum dikunci</em></div></label>' +
+
+        '</div>' +
+        '<div style="margin-top:16px">' +
+        UI.notice('n-info', 'Pembagian lembar mengikuti divisi karyawan',
+          'Sistem menaruh tiap baris ke lembar yang benar berdasarkan divisi karyawan di master — ' +
+          'WHL, GA &amp; GM, PLTD, PORT &amp; JETTY, atau KONSTRUKSI. HR tidak perlu memilih lembar saat mengisi.') +
+        '</div>',
+      confirm: 'Buka periode',
+      onConfirm: function (close) {
+        var parts = q('#onpCode').value.split('|');
+        var code = parts[0];
+        if (DB.otSheets[code]) {
+          UI.toast('Periode sudah ada', parts[1] + ' sudah dibuka sebelumnya.', 'bad');
+          return;
+        }
+        var mode = (qa('input[name="onpMode"]').filter(function (r) { return r.checked; })[0] || {}).value || 'blank';
+        var src = q('#onpSrc').value;
+
+        if (!DB.periods.filter(function (p) { return p.code === code; }).length) {
+          var meta = DB.nextPeriod();
+          DB.periods.push({ code: meta.code, label: meta.label, range: meta.range });
+        }
+        var sh = DB.createOtPeriod(code, src, mode === 'copy' ? 'copy' : 'blank');
+        DB.audit.unshift({
+          ts: '2026-09-23 12:30', actor: App.user.name, role: App.user.role,
+          action: 'Periode lembur dibuka', object: code, result: 'Berhasil',
+          desc: sh.entries.length + ' baris disiapkan dengan cara ' + mode
+        });
+        otPeriod = code; otPage = 1; otSearch = '';
+        close();
+        UI.toast('Periode lembur ' + parts[1] + ' dibuka',
+          sh.entries.length ? sh.entries.length + ' baris disalin.' : 'Lima lembar siap diisi.', 'ok');
+        App.rerender();
+        if (mode === 'import') setTimeout(function () { otImportForm(code); }, 200);
+      }
+    });
+  }
+
   function otRecapPanel(sh) {
     var per = DB.otByEmployee(sh, otSheetKey);
     UI.drawer({
@@ -5839,14 +6146,16 @@ var PAGES = (function () {
         .join(';'));
     });
     if (rows.length === 0) {
-      var sample = DB.employees.filter(function (x) {
-        return DB.divToSheet[x.division] === sheetKey;
-      })[0];
-      if (sample) {
+      /* Lembar kosong tetap diberi contoh, satu per lembar kalau cakupannya
+         semua, supaya HR melihat format yang benar untuk tiap kelompok. */
+      var keys = sheetKey ? [sheetKey] : DB.otSheetDefs.map(function (d) { return d.key; });
+      keys.forEach(function (k) {
+        var sample = DB.employees.filter(function (x) { return DB.divToSheet[x.division] === k; })[0];
+        if (!sample) return;
         lines.push([sample.code, sample.name, sample.position, DB.periodDates(periodCode)[0],
           DB.dayName(DB.periodDates(periodCode)[0]), 1, '13:00', '14:00', '17:00', '18:00',
-          'Contoh baris — hapus sebelum diunggah'].join(';'));
-      }
+          'Contoh baris lembar ' + k + ' — hapus sebelum diunggah'].join(';'));
+      });
     }
     return '\uFEFF' + lines.join('\r\n');
   }
@@ -5861,34 +6170,43 @@ var PAGES = (function () {
       wide: true,
       body:
         '<div class="imp-steps">' +
-        '<div class="imp-step"><i>1</i><div><b>Unduh template lembar ' + esc(sheetLabel(otSheetKey)) + '</b>' +
-        '<span>Berisi seluruh baris lembur yang sudah ada di lembar ini beserta judul kolomnya. ' +
-        'Kalau lembar masih kosong, template berisi satu baris contoh sebagai acuan format.</span>' +
-        '<div class="btn-row" style="margin-top:9px">' +
+        '<div class="imp-step"><i>1</i><div><b>Pilih cakupan dan unduh template</b>' +
+        '<span>Template berisi baris yang sudah ada beserta judul kolomnya. ' +
+        'Kalau masih kosong, template berisi satu baris contoh sebagai acuan format.</span>' +
+        '<div class="field" style="margin-top:10px;max-width:320px"><label>Cakupan impor</label>' +
+        '<select id="oiScope">' +
+        '<option value="' + esc(otSheetKey) + '">Hanya lembar ' + esc(sheetLabel(otSheetKey)) + '</option>' +
+        '<option value="ALL">Semua lembar sekaligus — 5 lembar dalam satu berkas</option>' +
+        '</select></div>' +
+        '<div class="btn-row" style="margin-top:10px">' +
         '<button class="btn btn-sm" id="oiTpl">' + icon('download', 13) + 'Unduh template</button>' +
         '<button class="btn btn-sm btn-link" id="oiCols">Lihat aturan kolom</button></div></div></div>' +
 
         '<div class="imp-step"><i>2</i><div><b>Pilih berkas yang sudah diisi</b>' +
-        '<span>Simpan dari Excel sebagai <b>CSV</b>. Baris lama di lembar ini akan <b>diganti seluruhnya</b> ' +
-        'oleh isi berkas — beda dengan payroll yang hanya memperbarui nilai per karyawan, ' +
-        'karena jumlah baris lembur berubah tiap bulan.</span>' +
+        '<span>Simpan dari Excel sebagai <b>CSV</b>. Baris lama pada cakupan yang dipilih akan ' +
+        '<b>diganti seluruhnya</b> oleh isi berkas — beda dengan payroll yang hanya memperbarui nilai ' +
+        'per karyawan, karena jumlah baris lembur berubah tiap bulan. ' +
+        'Lembar tujuan tiap baris ditentukan sistem dari divisi karyawan, bukan dari berkas.</span>' +
         '<div style="margin-top:9px"><input type="file" id="oiFile" accept=".csv,.txt,text/csv"></div></div></div>' +
 
         '<div class="imp-step"><i>3</i><div><b>Periksa hasil pembacaan</b>' +
         '<span>Tidak ada yang tersimpan sebelum Anda menekan terapkan.</span>' +
         '<div id="oiResult" style="margin-top:11px"></div></div></div>' +
         '</div>',
-      confirm: 'Ganti isi lembar ini',
+      confirm: 'Ganti isi lembar',
       onConfirm: function (close) {
         if (!parsed || !parsed.ok.length) {
           UI.toast('Belum ada data terbaca', 'Pilih berkas CSV yang sudah diisi.', 'bad');
           return;
         }
-        sh.entries = sh.entries.filter(function (e) { return e.sheet !== otSheetKey; });
+        var scope = q('#oiScope').value;
+        if (scope === 'ALL') sh.entries = [];
+        else sh.entries = sh.entries.filter(function (e) { return e.sheet !== scope; });
         parsed.ok.forEach(function (rec) { DB.addOtEntry(periodCode, rec); });
         DB.audit.unshift({
           ts: '2026-09-23 12:02', actor: App.user.name, role: App.user.role,
-          action: 'Impor data lembur', object: periodCode + ' · ' + sheetLabel(otSheetKey), result: 'Berhasil',
+          action: 'Impor data lembur',
+          object: periodCode + ' · ' + (scope === 'ALL' ? 'semua lembar' : sheetLabel(scope)), result: 'Berhasil',
           desc: parsed.ok.length + ' baris dimuat dari ' + esc(parsed.filename) +
             (parsed.unknown.length ? ', ' + parsed.unknown.length + ' ID tidak dikenali' : '')
         });
@@ -5899,9 +6217,11 @@ var PAGES = (function () {
     });
 
     q('#oiTpl', m.root).addEventListener('click', function () {
-      downloadFile('Template_Lembur_' + otSheetKey + '_' + periodCode + '.csv',
-        otCsvTemplate(periodCode, otSheetKey));
-      UI.toast('Template terunduh', 'Buka dengan Excel, isi, simpan sebagai CSV.', 'ok');
+      var scope = q('#oiScope', m.root).value;
+      downloadFile('Template_Lembur_' + scope + '_' + periodCode + '.csv',
+        otCsvTemplate(periodCode, scope === 'ALL' ? null : scope));
+      UI.toast('Template terunduh',
+        scope === 'ALL' ? 'Berisi baris dari kelima lembar.' : 'Buka dengan Excel, isi, simpan sebagai CSV.', 'ok');
     });
 
     q('#oiCols', m.root).addEventListener('click', function () {
@@ -6320,6 +6640,7 @@ var PAGES = (function () {
   }
 
   function mountOtGenerate() {
+    UI.wireNoticeBoxes();
     var sh = DB.otSheets[otPeriod];
 
     var sel = q('#otGenPeriod');
@@ -7642,9 +7963,15 @@ var PAGES = (function () {
   /* =======================================================================
      6 · PELACAKAN PENGIRIMAN
      ======================================================================= */
+  var trackDoc = '';
+
   function tracking() {
-    var rows = DB.deliveries;
+    var rows = DB.allDeliveries();
+    if (trackDoc) rows = rows.filter(function (r) { return r.docType === trackDoc; });
     var s = DB.summarise(rows);
+
+    var payS = DB.summarise(DB.deliveries);
+    var otS = DB.summarise(DB.otDeliveries);
 
     var t = UI.dataTable({
       rows: rows,
@@ -7652,21 +7979,24 @@ var PAGES = (function () {
       searchPlaceholder: 'Cari nama, ID, atau email…',
       searchOn: function (r) {
         var e = DB.byCode[r.code];
-        return r.code + ' ' + (e ? e.name + ' ' + e.divisionName : '') + ' ' + (r.email || '');
+        return r.code + ' ' + (e ? e.name + ' ' + e.divisionName : '') + ' ' + (r.email || '') + ' ' + r.batchId;
       },
       filters: [
+        { key: 'doc', label: 'Semua dokumen', options: [
+          { value: 'PAYSLIP', label: 'Slip gaji' }, { value: 'OVERTIME', label: 'Slip lembur' }] },
         { key: 'div', label: 'Semua divisi', options: DB.divisions.map(function (d) { return { value: d.key, label: d.name }; }) },
         { key: 'st', label: 'Semua status', options: [
           { value: 'SENT', label: 'Terkirim' },
           { value: 'RETRY_SUCCESS', label: 'Berhasil setelah kirim ulang' },
           { value: 'PENDING', label: 'Menunggu' },
           { value: 'FAILED', label: 'Gagal' },
-          { value: 'EXCEPTION', label: 'Pengecualian' }
-        ] },
-        { key: 'per', label: 'Periode September 2026', options: [{ value: 'SEP-2026', label: 'September 2026' }] }
+          { value: 'EXCEPTION', label: 'Pengecualian' }] },
+        { key: 'per', label: 'Semua periode', options: DB.periods.map(function (p) { return { value: p.code, label: p.label }; }) }
       ],
       filterOn: function (r, k, v) {
+        if (k === 'doc') return r.docType === v;
         if (k === 'st') return r.status === v;
+        if (k === 'per') return r.period === v;
         if (k === 'div') { var e = DB.byCode[r.code]; return e && e.division === v; }
         return true;
       },
@@ -7675,11 +8005,21 @@ var PAGES = (function () {
         { key: 'code', label: 'ID', cls: 'col-code', value: function (r) { return r.code; }, render: function (r) { return esc(r.code); } },
         { key: 'name', label: 'Nama', cls: 'col-name', value: function (r) { return (DB.byCode[r.code] || {}).name; },
           render: function (r) { return esc((DB.byCode[r.code] || {}).name || '—'); } },
+        { key: 'doc', label: 'Dokumen', value: function (r) { return r.docType; },
+          render: function (r) {
+            return r.docType === 'PAYSLIP'
+              ? '<span class="doc-tag d-pay">Slip gaji</span>'
+              : '<span class="doc-tag d-ot">Slip lembur</span>';
+          } },
+        { key: 'per', label: 'Periode', value: function (r) { return r.period; },
+          render: function (r) {
+            var p = DB.periods.filter(function (x) { return x.code === r.period; })[0];
+            return '<span style="color:var(--muted)">' + esc(p ? p.label : r.period) + '</span>';
+          } },
         { key: 'div', label: 'Divisi', value: function (r) { return (DB.byCode[r.code] || {}).divisionName; },
           render: function (r) { return '<span style="color:var(--muted)">' + esc((DB.byCode[r.code] || {}).divisionName || '') + '</span>'; } },
         { key: 'email', label: 'Email', cls: 'col-email', value: function (r) { return r.email || 'zzz'; },
           render: function (r) { return r.email ? esc(r.email) : '<span class="chip">belum ada</span>'; } },
-        { key: 'doc', label: 'Berkas', value: function (r) { return r.payslipStatus; }, render: function (r) { return UI.badge(r.payslipStatus); } },
         { key: 'mail', label: 'Email', value: function (r) { return r.emailStatus; }, render: function (r) { return UI.badge(r.emailStatus); } },
         { key: 'st', label: 'Pengiriman', value: function (r) { return r.status; }, render: function (r) { return UI.badge(r.status); } },
         { key: 'time', label: 'Waktu kirim', value: function (r) { return r.sentAt || 'zz'; },
@@ -7706,16 +8046,32 @@ var PAGES = (function () {
 
     var host = UI.el('<div></div>');
     host.innerHTML =
-      '<p class="view-intro">Satu baris untuk satu karyawan. Status di kolom pengiriman diambil dari jawaban server penerima, ' +
-      'bukan dari asumsi sistem. Pengiriman yang dipantulkan akan berubah statusnya sendiri dalam beberapa menit sampai beberapa jam.</p>' +
-      '<div class="grid g-4" style="margin-bottom:14px">' +
+      '<p class="view-intro">Satu baris untuk satu dokumen per karyawan, mencakup slip gaji dan slip lembur sekaligus. ' +
+      'Status di kolom pengiriman diambil dari jawaban server penerima, bukan dari asumsi sistem. ' +
+      'Pengiriman yang dipantulkan berubah statusnya sendiri dalam beberapa menit sampai beberapa jam.</p>' +
+
+      '<div class="doc-split">' +
+      '<div class="doc-card d-pay"><div class="doc-card-head"><span class="doc-tag d-pay">Slip gaji</span>' +
+      '<b>' + UI.pct(payS.rate) + '%</b></div>' +
+      UI.segbar(payS) +
+      '<div class="doc-card-foot">' + num(payS.delivered) + ' terkirim · ' + num(payS.failed) + ' gagal · ' +
+      num(payS.pending) + ' menunggu · ' + num(payS.exception) + ' pengecualian</div></div>' +
+
+      '<div class="doc-card d-ot"><div class="doc-card-head"><span class="doc-tag d-ot">Slip lembur</span>' +
+      '<b>' + UI.pct(otS.rate) + '%</b></div>' +
+      UI.segbar(otS) +
+      '<div class="doc-card-foot">' + num(otS.delivered) + ' terkirim · ' + num(otS.failed) + ' gagal · ' +
+      num(otS.pending) + ' menunggu · ' + num(otS.exception) + ' pengecualian</div></div>' +
+      '</div>' +
+
+      '<div class="grid g-4" style="margin:16px 0">' +
       UI.kpi('Terkirim', num(s.sent), 'Diterima server tujuan', 'good') +
       UI.kpi('Berhasil setelah ulang', num(s.retrySuccess), 'Gagal di percobaan pertama', 'good') +
-      UI.kpi('Menunggu', num(s.pending), 'Masih dalam antrian', 'warn') +
+      UI.kpi('Menunggu', num(s.pending), 'Masih dalam antrian', s.pending ? 'warn' : 'good') +
       UI.kpi('Gagal', num(s.failed), 'Butuh tindakan HR', s.failed ? 'bad' : 'good') +
       '</div>';
     host.appendChild(t.root);
-    return { html: host.innerHTML, node: host };
+    return { node: host };
   }
 
   function retryOne(code) {
@@ -7729,7 +8085,8 @@ var PAGES = (function () {
       confirm: 'Kirim ulang sekarang',
       onConfirm: function (close) {
         close();
-        var row = DB.deliveries.filter(function (r) { return r.code === code; })[0];
+        var row = DB.allDeliveries().filter(function (r) { return r.code === code && r.status === 'FAILED'; })[0]
+          || DB.allDeliveries().filter(function (r) { return r.code === code; })[0];
         if (row) {
           row.status = 'RETRY_SUCCESS';
           row.emailStatus = 'ACCEPTED';
@@ -7753,7 +8110,7 @@ var PAGES = (function () {
      7 · PUSAT KIRIM ULANG
      ======================================================================= */
   function failed() {
-    var rows = DB.deliveries.filter(function (r) { return r.status === 'FAILED'; });
+    var rows = DB.allDeliveries().filter(function (r) { return r.status === 'FAILED'; });
 
     if (!rows.length) {
       return {
@@ -7783,7 +8140,7 @@ var PAGES = (function () {
       UI.kpi('Butuh perbaikan data', num(rows.filter(function (r) {
         return r.errorCode === 'INVALID_EMAIL' || r.errorCode === 'PAYSLIP_MISSING' || r.errorCode === 'MISMATCH';
       }).length), 'Kirim ulang tidak akan menolong', 'bad') +
-      UI.kpi('Sudah berhasil hari ini', num(DB.deliveries.filter(function (r) { return r.status === 'RETRY_SUCCESS'; }).length),
+      UI.kpi('Sudah berhasil hari ini', num(DB.allDeliveries().filter(function (r) { return r.status === 'RETRY_SUCCESS'; }).length),
         'Lewat kirim ulang', 'good') +
       '</div>';
 
@@ -7806,7 +8163,9 @@ var PAGES = (function () {
       var fixable = ['MAILBOX_FULL', 'SYSTEM_ERROR', 'REJECTED'].indexOf(r.errorCode) > -1;
       html += '<tr>' +
         '<td><input type="checkbox" data-pick="' + r.code + '" style="min-height:0"' + (fixable ? '' : ' disabled') + '></td>' +
-        '<td><b style="font-weight:500">' + esc(e.name) + '</b><div class="col-code">' + esc(e.code) + ' · ' + esc(e.divisionName) + '</div></td>' +
+        '<td><b style="font-weight:500">' + esc(e.name) + '</b><div class="col-code">' + esc(e.code) + ' · ' + esc(e.divisionName) + '</div>' +
+        '<div style="margin-top:3px">' + (r.docType === 'OVERTIME'
+          ? '<span class="doc-tag d-ot">Slip lembur</span>' : '<span class="doc-tag d-pay">Slip gaji</span>') + '</div></td>' +
         '<td class="col-email">' + esc(r.email || '—') + '</td>' +
         '<td><b style="font-weight:500">' + esc(f.label) + '</b><div style="color:var(--muted);font-size:11.5px">' + esc(f.detail) + '</div></td>' +
         '<td class="col-num">' + r.retryCount + ' / ' + DB.settings.retryMax + '</td>' +
@@ -7885,7 +8244,7 @@ var PAGES = (function () {
       onConfirm: function (close) {
         close();
         codes.forEach(function (c) {
-          var row = DB.deliveries.filter(function (r) { return r.code === c; })[0];
+          var row = DB.allDeliveries().filter(function (r) { return r.code === c && r.status === 'FAILED'; })[0];
           if (row) {
             row.status = 'RETRY_SUCCESS';
             row.emailStatus = 'ACCEPTED';
@@ -8233,7 +8592,7 @@ var App = (function () {
 
   function counts() {
     return {
-      failed: DB.deliveries.filter(function (r) { return r.status === 'FAILED'; }).length,
+      failed: DB.allDeliveries().filter(function (r) { return r.status === 'FAILED'; }).length,
       blocking: 0
     };
   }
@@ -8279,7 +8638,7 @@ var App = (function () {
 
   /* ----------------------------------------------------------- topbar -- */
   function renderTopbar(route) {
-    var s = DB.summarise(DB.deliveries);
+    var s = DB.summarise(DB.allDeliveries());
     q('#topbar').innerHTML =
       '<h1>' + esc(route.title) + '</h1>' +
       '<span class="demo-flag"><i></i>Data contoh</span>' +
