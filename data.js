@@ -338,7 +338,7 @@ var DB = (function () {
 
       if (!emp.email) {
         rows.push({
-          batchId: batchId, code: emp.code, docType: docType,
+          batchId: batchId, code: emp.code, docType: docType, period: period,
           email: null, payslipStatus: 'READY', emailStatus: 'NO_ADDRESS',
           status: 'EXCEPTION', sentAt: null, retryCount: 0,
           lastAttempt: null, errorCode: null, messageId: null
@@ -357,7 +357,7 @@ var DB = (function () {
       var stamp = pad(hh, 2) + ':' + pad(mm, 2);
 
       var row = {
-        batchId: batchId, code: emp.code, docType: docType,
+        batchId: batchId, code: emp.code, docType: docType, period: period,
         email: emp.email,
         payslipStatus: 'READY',
         emailStatus: 'ACCEPTED',
@@ -1161,6 +1161,71 @@ var DB = (function () {
   buildOtSheet('AGU-2026', true);
   buildOtSheet('SEP-2026', false);
 
+  /* Pengiriman slip lembur — batch Agustus yang sudah dijalankan.
+     Dibuat dari daftar karyawan yang benar-benar punya catatan lembur,
+     bukan dari seluruh karyawan, karena tidak semua orang lembur. */
+  var otDeliveries = [];
+  (function buildOtDeliveries() {
+    var sh = otSheets['AGU-2026'];
+    if (!sh) return;
+    var people = otByEmployee(sh);
+    var clock = 10 * 60 + 2;
+    people.forEach(function (p, i) {
+      var emp = byCode[p.code];
+      if (!emp) return;
+      if (!emp.email) {
+        otDeliveries.push({
+          batchId: 'OT-AGU-2026', code: p.code, docType: 'OVERTIME', period: 'AGU-2026',
+          email: null, payslipStatus: 'READY', emailStatus: 'NO_ADDRESS',
+          status: 'EXCEPTION', sentAt: null, retryCount: 0, lastAttempt: null,
+          errorCode: null, messageId: null
+        });
+        return;
+      }
+      clock += 1 + (i % 3);
+      var stamp = pad(Math.floor(clock / 60), 2) + ':' + pad(clock % 60, 2);
+      var bad = (i % 67 === 23);
+      otDeliveries.push({
+        batchId: 'OT-AGU-2026', code: p.code, docType: 'OVERTIME', period: 'AGU-2026',
+        email: emp.email,
+        payslipStatus: 'READY',
+        emailStatus: bad ? 'BOUNCED' : 'ACCEPTED',
+        status: bad ? 'FAILED' : 'SENT',
+        sentDate: '2026-08-26',
+        sentAt: bad ? null : stamp,
+        retryCount: bad ? 2 : 0,
+        lastAttempt: '2026-08-26 ' + stamp,
+        errorCode: bad ? 'MAILBOX_FULL' : null,
+        messageId: bad ? null : '<ot-agu-2026.' + p.code.toLowerCase() + '@' + DOMAIN + '>'
+      });
+    });
+  })();
+
+  function allDeliveries() { return deliveries.concat(otDeliveries); }
+
+  /* Dipakai saat distribusi dijalankan di layar demo, supaya hasilnya
+     langsung muncul di halaman pelacakan. */
+  function recordDistribution(batch, results) {
+    results.forEach(function (r) {
+      var emp = byCode[r.code];
+      var rec = {
+        batchId: batch.id, code: r.code, docType: batch.docType, period: batch.period,
+        email: emp ? emp.email : null,
+        payslipStatus: 'READY',
+        emailStatus: r.ok ? 'ACCEPTED' : 'BOUNCED',
+        status: r.ok ? 'SENT' : 'FAILED',
+        sentDate: batch.date, sentAt: r.ok ? r.at : null,
+        retryCount: r.ok ? 0 : 1,
+        lastAttempt: batch.date + ' ' + r.at,
+        errorCode: r.ok ? null : 'MAILBOX_FULL',
+        messageId: r.ok ? '<' + batch.id.toLowerCase() + '.' + r.code.toLowerCase() + '@' + DOMAIN + '>' : null
+      };
+      if (batch.docType === 'OVERTIME') otDeliveries.push(rec);
+      else deliveries.push(rec);
+    });
+  }
+
+
   /* Empat baris contoh yang bermasalah supaya pemeriksaan ada isinya */
   (function seedOtIssues() {
     var sh = otSheets['SEP-2026'];
@@ -1376,6 +1441,9 @@ var DB = (function () {
     periods: periods,
     batches: batches,
     deliveries: deliveries,
+    otDeliveries: otDeliveries,
+    allDeliveries: allDeliveries,
+    recordDistribution: recordDistribution,
     history: history,
     overtime: overtime,
     otByCode: otByCode,
